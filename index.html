@@ -19,9 +19,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .input{width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .15s,box-shadow .15s}
 .input:focus{border-color:var(--text);box-shadow:0 0 0 3px rgba(26,26,26,0.07)}
 .form-label{font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;display:block}
-.status-badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:500}
-.status-badge.green{background:var(--green-bg);color:var(--green)}
-.status-badge.red{background:var(--red-bg);color:var(--red)}
 .sa-nav{background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:0;z-index:100}
 .sa-nav-inner{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;height:56px;gap:10px}
 .sa-wrap{max-width:1100px;margin:0 auto;padding:32px 32px 60px}
@@ -36,7 +33,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   </div>
 </div>
 
-<!-- Bank Help Modal -->
 <div id="bank-help-modal" class="modal-overlay" onclick="if(event.target===this)closeBankHelp()">
   <div class="modal" style="max-width:520px;max-height:88vh;overflow-y:auto">
     <div class="modal-title">How to export a CSV from your bank</div>
@@ -46,14 +42,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <div><strong style="color:var(--text);display:block;margin-bottom:2px">Scotiabank</strong>Accounts → Activity → Export → CSV</div>
       <div><strong style="color:var(--text);display:block;margin-bottom:2px">CIBC</strong>Account Details → Download → CSV</div>
       <div><strong style="color:var(--text);display:block;margin-bottom:2px">BMO</strong>Account Activity → Download Transactions → CSV</div>
-      <div><strong style="color:var(--text);display:block;margin-bottom:2px">Amex Canada</strong>Statements & Activity → Download → CSV</div>
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">Amex Canada</strong>Statements &amp; Activity → Download → CSV</div>
       <div style="background:var(--bg);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text-muted)">💡 The app auto-detects the column layout so most Canadian bank CSV formats work out of the box.</div>
     </div>
     <div class="modal-actions"><button onclick="closeBankHelp()" class="btn btn-dark">Got it</button></div>
   </div>
 </div>
 
-<!-- Mapping Modal -->
 <div id="map-modal" class="modal-overlay" onclick="if(event.target===this)closeMapModal()">
   <div class="modal" style="max-width:500px">
     <div class="modal-title">Map your CSV columns</div>
@@ -69,14 +64,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 <div class="sa-wrap"><div id="tab-content"></div></div>
 
 <script>
+
 // ── Utilities ────────────────────────────────────────────────────────────────
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-const fmt = n => Math.abs(n).toLocaleString('en-CA', {minimumFractionDigits:2, maximumFractionDigits:2});
-const fmtCAD = n => (n < 0 ? '−' : '') + '$' + fmt(Math.abs(n));
-const effectiveAmt = t => Math.abs(t.amount) * (t._split || 1);
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+function fmt(n) { return Math.abs(n).toLocaleString('en-CA', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtCAD(n) { return (n < 0 ? '−' : '') + '$' + fmt(Math.abs(n)); }
+function effectiveAmt(t) { return Math.abs(t.amount) * (t._split || 1); }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
-const S = {
+var S = {
   statements: JSON.parse(localStorage.getItem('sa_statements') || '[]'),
   transactions: JSON.parse(localStorage.getItem('sa_transactions') || '[]'),
   ui: {
@@ -85,7 +81,8 @@ const S = {
     logSearch: '', selectedTxIds: [], splittingTx: null,
     editingTx: null, catPickerRect: null, bulkCatOpen: false,
     bulkCatRect: null, pendingDelete: null, importedCount: 0,
-    importWarning: null, addingCat: false, error: ''
+    importWarning: null, addingCat: false, error: '',
+    catDropdown: null
   }
 };
 function persist() {
@@ -93,8 +90,103 @@ function persist() {
   localStorage.setItem('sa_transactions', JSON.stringify(S.transactions));
 }
 
+// ── Date normalizer ───────────────────────────────────────────────────────────
+var MNAMES = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+function monthNum(s) {
+  var i = MNAMES.indexOf((s||'').toLowerCase().slice(0,3));
+  return i === -1 ? null : String(i + 1).padStart(2, '0');
+}
+function pad2(n) { return String(parseInt(n, 10)).padStart(2, '0'); }
+
+function normalizeDate(raw) {
+  var s = (raw || '').trim();
+  if (!s) return '';
+
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // YYYY/MM/DD
+  var m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (m) return m[1] + '-' + pad2(m[2]) + '-' + pad2(m[3]);
+
+  // DD/MM/YYYY or MM/DD/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    var a = parseInt(m[1], 10), b = parseInt(m[2], 10), yr = m[3];
+    var mm, dd;
+    if (a > 12) { mm = b; dd = a; } else { mm = a; dd = b; }
+    return yr + '-' + pad2(mm) + '-' + pad2(dd);
+  }
+
+  // DD-MM-YYYY
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) return m[3] + '-' + pad2(m[2]) + '-' + pad2(m[1]);
+
+  // DD MMM YYYY  e.g. "15 Feb 2026"
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$/);
+  if (m) {
+    var mo = monthNum(m[2]);
+    if (mo) return m[3] + '-' + mo + '-' + pad2(m[1]);
+  }
+
+  // MMM DD YYYY  e.g. "Feb 15 2026"
+  m = s.match(/^([A-Za-z]{3,})\s+(\d{1,2})[,\s]+(\d{4})$/);
+  if (m) {
+    var mo2 = monthNum(m[1]);
+    if (mo2) return m[3] + '-' + mo2 + '-' + pad2(m[2]);
+  }
+
+  // DD MMM  e.g. "15 Feb" or "01 Feb" — no year, guess it
+  m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})$/);
+  if (m) {
+    var mo3 = monthNum(m[2]);
+    if (mo3) {
+      var now = new Date();
+      var curYr = now.getFullYear();
+      var curMo = now.getMonth() + 1;
+      var guessYr = parseInt(mo3, 10) > curMo + 1 ? curYr - 1 : curYr;
+      return guessYr + '-' + mo3 + '-' + pad2(m[1]);
+    }
+  }
+
+  // MMM DD  e.g. "Feb 15"
+  m = s.match(/^([A-Za-z]{3,})\s+(\d{1,2})$/);
+  if (m) {
+    var mo4 = monthNum(m[1]);
+    if (mo4) {
+      var now2 = new Date();
+      var curYr2 = now2.getFullYear();
+      var curMo2 = now2.getMonth() + 1;
+      var guessYr2 = parseInt(mo4, 10) > curMo2 + 1 ? curYr2 - 1 : curYr2;
+      return guessYr2 + '-' + mo4 + '-' + pad2(m[2]);
+    }
+  }
+
+  return s;
+}
+
+function dateToYYYYMM(dateStr) {
+  if (!dateStr || dateStr.length < 7) return null;
+  var parts = dateStr.split('-');
+  if (parts.length < 2) return null;
+  var y = parseInt(parts[0], 10);
+  var mo = parseInt(parts[1], 10);
+  if (isNaN(y) || isNaN(mo) || y < 2000 || y > 2100 || mo < 1 || mo > 12) return null;
+  return parts[0] + '-' + parts[1];
+}
+
+function monthLabel(yyyymm) {
+  if (!yyyymm) return '';
+  var parts = yyyymm.split('-');
+  var y = parseInt(parts[0], 10);
+  var mo = parseInt(parts[1], 10);
+  if (isNaN(y) || isNaN(mo) || mo < 1 || mo > 12) return yyyymm;
+  var names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return names[mo - 1] + ' ' + y;
+}
+
 // ── Categories ────────────────────────────────────────────────────────────────
-const CATS_DEFAULT = {
+var CATS_DEFAULT = {
   'Groceries':     {icon:'🛒', color:'#92600a'},
   'Dining & Food': {icon:'🍽️', color:'#f97316'},
   'Transport':     {icon:'🚗', color:'#10b981'},
@@ -107,174 +199,182 @@ const CATS_DEFAULT = {
   'Subscriptions': {icon:'🔄', color:'#4a9370'},
   'Housing':       {icon:'🏠', color:'#6366f1'},
   'Insurance':     {icon:'🛡️', color:'#475569'},
-  'Other':         {icon:'📦', color:'#a8a8a8'},
+  'Other':         {icon:'📦', color:'#a8a8a8'}
 };
-const CUSTOM_CAT_KEY = 'ff_custom_categories';
-const loadCustomCats = () => { try { return JSON.parse(localStorage.getItem(CUSTOM_CAT_KEY)||'{}'); } catch(e) { return {}; } };
-const saveCustomCats = c => localStorage.setItem(CUSTOM_CAT_KEY, JSON.stringify(c));
-let CATS = {...CATS_DEFAULT, ...loadCustomCats()};
-function refreshCats() { CATS = {...CATS_DEFAULT, ...loadCustomCats()}; }
+var CUSTOM_CAT_KEY = 'ff_custom_categories';
+function loadCustomCats() { try { return JSON.parse(localStorage.getItem(CUSTOM_CAT_KEY) || '{}'); } catch(e) { return {}; } }
+function saveCustomCats(c) { localStorage.setItem(CUSTOM_CAT_KEY, JSON.stringify(c)); }
+var CATS = {};
+function refreshCats() {
+  CATS = {};
+  var keys = Object.keys(CATS_DEFAULT);
+  for (var i = 0; i < keys.length; i++) CATS[keys[i]] = CATS_DEFAULT[keys[i]];
+  var custom = loadCustomCats();
+  var ckeys = Object.keys(custom);
+  for (var j = 0; j < ckeys.length; j++) CATS[ckeys[j]] = custom[ckeys[j]];
+}
+refreshCats();
 
-// ── Keyword-based auto-categorizer ────────────────────────────────────────────
-const RULES = [
-  ['Groceries',     /loblaws|metro|sobeys|fortinos|food basic|no frills|real canadian|superstore|walmart|costco|iga|maxi|provigo|farm boy|whole food|trader joe|grocery|supermarché/i],
-  ['Dining & Food', /mcdonald|tim horton|starbucks|subway|a&w|harveys|wendy|burger king|pizza|sushi|ramen|pho|restaurant|café|cafe|bar |bistro|grill|kitchen|diner|eatery|doordash|uber eat|skip|instacart|grubhub|deliveroo/i],
-  ['Transport',     /uber(?!.*eat)|lyft|taxi|via rail|go transit|ttc|stm|octopus|presto|parking|impark|green p|shell|esso|petro|husky|sunoco|canadian tire gas|fuel|airbnb|hertz|enterprise|budget car|uhaul/i],
-  ['Travel',        /air canada|westjet|porter|sunwing|expedia|booking\.com|hotels\.com|marriott|hilton|hyatt|sheraton|delta hotel|best western|airbnb|vacation|resort|cruise/i],
-  ['Shopping',      /amazon|shopify|etsy|ebay|best buy|the bay|hudson|winners|homesense|marshalls|h&m|zara|gap|old navy|banana republic|nordstrom|simons|roots|indigo|chapters|sport chek|atmosphere/i],
-  ['Entertainment', /netflix|spotify|apple.*tv|disney\+|crave|amazon.*prime|hbo|youtube.*premium|cinema|cineplex|imax|theatre|theater|concert|ticketmaster|eventbrite|steam|playstation|xbox|nintendo/i],
-  ['Subscriptions', /google.*one|icloud|dropbox|microsoft 365|office 365|adobe|notion|1password|lastpass|duolingo|headspace|calm|audible/i],
-  ['Healthcare',    /shoppers drug|rexall|pharma|clinic|hospital|dental|optom|vision|physio|chiro|massage|lab |lifelabs|dynacare|pharmacy|medical|health/i],
-  ['Gym',           /goodlife|anytime fitness|ymca|planet fitness|equinox|orangetheory|crossfit|spin|yoga|pilates|gym|fitness|lululemon|nike|adidas/i],
-  ['Utilities',     /rogers|bell|telus|fido|koodo|virgin mobile|wind|shaw|cogeco|hydro|enbridge|union gas|alectra|toronto hydro|hydro one|internet|wireless/i],
-  ['Housing',       /rent|lease|mortgage|property tax|condo fee|maintenance|rona|home depot|canadian tire(?!.*gas)|ikea|wayfair|structube|article|cb2/i],
-  ['Insurance',     /intact|td insurance|rbc insurance|sun life|manulife|great-west|desjardins.*assur|insurance|assurance/i],
+// ── Keyword categorizer ───────────────────────────────────────────────────────
+var RULES = [
+  ['Groceries',     /loblaws|metro|sobeys|fortinos|food basic|no frills|real canadian|superstore|walmart|costco|iga|maxi|provigo|farm boy|whole food|grocery|supermarché/i],
+  ['Dining & Food', /mcdonald|tim horton|starbucks|subway|a&w|harveys|wendy|burger king|pizza|sushi|ramen|pho|restaurant|caf|bistro|grill|kitchen|diner|eatery|doordash|uber eat|skip|instacart/i],
+  ['Transport',     /uber(?!.*eat)|lyft|taxi|via rail|go transit|ttc|stm|presto|parking|impark|green p|shell|esso|petro|husky|sunoco|fuel/i],
+  ['Travel',        /air canada|westjet|porter|sunwing|expedia|booking|hotels\.com|marriott|hilton|hyatt|sheraton|delta hotel|best western|airbnb|resort|cruise/i],
+  ['Shopping',      /amazon|shopify|etsy|ebay|best buy|the bay|hudson|winners|homesense|marshalls|h&m|zara|gap|old navy|banana republic|nordstrom|simons|roots|indigo|chapters|sport chek/i],
+  ['Entertainment', /netflix|spotify|disney|crave|youtube|cinema|cineplex|imax|theatre|theater|concert|ticketmaster|steam|playstation|xbox|nintendo/i],
+  ['Subscriptions', /google.*one|icloud|dropbox|microsoft 365|office 365|adobe|notion|1password|duolingo|headspace|audible/i],
+  ['Healthcare',    /shoppers drug|rexall|pharma|clinic|hospital|dental|optom|vision|physio|chiro|massage|lifelabs|dynacare|pharmacy|medical/i],
+  ['Gym',           /goodlife|anytime fitness|ymca|planet fitness|equinox|orangetheory|crossfit|yoga|pilates|lululemon/i],
+  ['Utilities',     /rogers|bell|telus|fido|koodo|virgin mobile|shaw|cogeco|hydro|enbridge|union gas|alectra|toronto hydro|internet|wireless/i],
+  ['Housing',       /rent|lease|mortgage|property tax|condo fee|rona|home depot|canadian tire(?!.*gas)|ikea|wayfair|structube/i],
+  ['Insurance',     /intact|td insurance|rbc insurance|sun life|manulife|great-west|desjardins|insurance/i]
 ];
 function autoCategory(desc) {
-  const d = (desc || '').toLowerCase();
-  for (const [cat, re] of RULES) { if (re.test(d)) return cat; }
+  var d = (desc || '').toLowerCase();
+  for (var i = 0; i < RULES.length; i++) { if (RULES[i][1].test(d)) return RULES[i][0]; }
   return 'Other';
 }
 
 // ── CSV Parser ────────────────────────────────────────────────────────────────
-// Returns {headers, rows} where rows are arrays of strings
 function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/);
-  const parse = line => {
-    const res = []; let cur = ''; let inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
+  var lines = text.trim().split(/\r?\n/);
+  function parseLine(line) {
+    var res = [], cur = '', inQ = false;
+    for (var i = 0; i < line.length; i++) {
+      var c = line[i];
       if (c === '"') { inQ = !inQ; continue; }
       if (c === ',' && !inQ) { res.push(cur.trim()); cur = ''; continue; }
       cur += c;
     }
     res.push(cur.trim());
     return res;
-  };
-  const headers = parse(lines[0]);
-  const rows = lines.slice(1).filter(l => l.trim()).map(parse);
-  return {headers, rows};
+  }
+  var headers = parseLine(lines[0]);
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    if (lines[i].trim()) rows.push(parseLine(lines[i]));
+  }
+  return {headers: headers, rows: rows};
 }
 
-// Try to detect columns automatically
 function detectColumns(headers) {
-  const h = headers.map(x => x.toLowerCase());
-  const find = (...terms) => h.findIndex(x => terms.some(t => x.includes(t)));
-
-  const date  = find('date', 'posted', 'trans date', 'transaction date');
-  const desc  = find('description', 'merchant', 'payee', 'details', 'memo', 'name', 'narrative');
-  const debit = find('debit', 'amount debit', 'withdrawal', 'charge', 'spend');
-  const credit= find('credit', 'amount credit', 'payment', 'deposit');
-  const amt   = find('amount', 'transaction amount', 'amt');
-
+  var h = headers.map(function(x) { return x.toLowerCase(); });
+  function find() {
+    var terms = Array.prototype.slice.call(arguments);
+    for (var i = 0; i < h.length; i++) {
+      for (var j = 0; j < terms.length; j++) {
+        if (h[i].indexOf(terms[j]) !== -1) return i;
+      }
+    }
+    return -1;
+  }
+  var date  = find('date', 'posted', 'trans date');
+  var desc  = find('description', 'merchant', 'payee', 'details', 'memo', 'narrative');
+  var debit = find('debit', 'withdrawal', 'charge', 'spend');
+  var credit= find('credit', 'payment', 'deposit');
+  var amt   = find('amount', 'transaction amount');
   if (date === -1 || desc === -1) return null;
   if (debit === -1 && credit === -1 && amt === -1) return null;
-  return {date, desc, debit, credit, amt};
+  return {date: date, desc: desc, debit: debit, credit: credit, amt: amt};
 }
 
 function rowsToTransactions(headers, rows, mapping) {
-  const {date: di, desc: dsc, debit: deb, credit: crd, amt: amti} = mapping;
-  const txs = [];
-  for (const row of rows) {
-    const dateRaw = (row[di]||'').trim();
-    const descRaw = (row[dsc]||'').trim();
+  var di = mapping.date, dsc = mapping.desc, deb = mapping.debit, crd = mapping.credit, amti = mapping.amt;
+  var txs = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var dateRaw = (row[di] || '').trim();
+    var descRaw = (row[dsc] || '').trim();
     if (!dateRaw || !descRaw) continue;
-
-    // Normalise date → YYYY-MM-DD
-    let date = dateRaw;
-    const m1 = dateRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-    const m2 = dateRaw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-    const m3 = dateRaw.match(/^(\w{3})\s+(\d{1,2}),?\s+(\d{4})$/i);
-    if (m2) { date = `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`; }
-    else if (m1) { const yr = m1[3].length===2?'20'+m1[3]:m1[3]; date = `${yr}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`; }
-    else if (m3) { const months={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; date=`${m3[3]}-${months[m3[1].toLowerCase()]||'01'}-${m3[2].padStart(2,'0')}`; }
-
-    let amount = 0;
+    var date = normalizeDate(dateRaw);
+    var amount = 0;
     if (deb !== -1 && crd !== -1) {
-      // Separate debit/credit columns
-      const d = parseFloat((row[deb]||'').replace(/[$,\s]/g,''));
-      const c = parseFloat((row[crd]||'').replace(/[$,\s]/g,''));
-      if (!isNaN(d) && d > 0) amount = d;        // debit = expense
-      else if (!isNaN(c) && c > 0) amount = -c;  // credit = payment, skip
+      var d = parseFloat((row[deb] || '').replace(/[$,\s]/g, ''));
+      var c = parseFloat((row[crd] || '').replace(/[$,\s]/g, ''));
+      if (!isNaN(d) && d > 0) amount = d;
+      else if (!isNaN(c) && c > 0) amount = -c;
     } else if (amti !== -1) {
-      const v = parseFloat((row[amti]||'').replace(/[$,\s]/g,''));
-      if (!isNaN(v)) amount = v > 0 ? v : -v; // treat positive as expense
+      var v = parseFloat((row[amti] || '').replace(/[$,\s]/g, ''));
+      if (!isNaN(v)) amount = v > 0 ? v : -v;
     }
-
-    if (amount <= 0) continue; // skip payments/credits
-
-    txs.push({
-      date, description: descRaw, amount,
-      category: autoCategory(descRaw)
-    });
+    if (amount <= 0) continue;
+    txs.push({date: date, description: descRaw, amount: amount, category: autoCategory(descRaw)});
   }
   return txs;
 }
 
-// ── State for manual mapping ──────────────────────────────────────────────────
-let _pendingCSV = null; // {headers, rows, filename}
-
+// ── Manual mapping modal ──────────────────────────────────────────────────────
+var pendingCSV = null;
 function openBankHelp() { document.getElementById('bank-help-modal').classList.add('open'); }
 function closeBankHelp() { document.getElementById('bank-help-modal').classList.remove('open'); }
-function closeMapModal() { document.getElementById('map-modal').classList.remove('open'); _pendingCSV = null; }
+function closeMapModal() { document.getElementById('map-modal').classList.remove('open'); pendingCSV = null; }
 
 function openMapModal(headers, rows, filename) {
-  _pendingCSV = {headers, rows, filename};
-  const selStyle = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);outline:none;margin-top:4px';
-  const opts = ['— skip —', ...headers].map((h,i) => `<option value="${i-1}">${h}</option>`).join('');
-  document.getElementById('map-modal-body').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
-      ${[['map-date','Date *'],['map-desc','Description *'],['map-debit','Debit / Amount'],['map-credit','Credit (optional)']].map(([id,label])=>`
-        <div><label class="form-label">${label}</label><select id="${id}" style="${selStyle}">${opts}</select></div>
-      `).join('')}
-    </div>
-    <p style="font-size:11px;color:var(--text-muted)">* required</p>`;
-  // Try to pre-select sensible defaults
-  const trySelect = (id,...terms) => {
-    const sel = document.getElementById(id);
-    const idx = headers.findIndex(h => terms.some(t => h.toLowerCase().includes(t)));
-    if (idx !== -1) sel.value = idx;
-  };
-  trySelect('map-date','date','posted');
-  trySelect('map-desc','desc','merchant','payee','detail','memo');
-  trySelect('map-debit','debit','withdraw','charge','amount');
-  trySelect('map-credit','credit','payment','deposit');
+  pendingCSV = {headers: headers, rows: rows, filename: filename};
+  var selStyle = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);outline:none;margin-top:4px';
+  var opts = '<option value="-1">— skip —</option>';
+  for (var i = 0; i < headers.length; i++) opts += '<option value="' + i + '">' + headers[i] + '</option>';
+  var fields = [['map-date','Date *'],['map-desc','Description *'],['map-debit','Debit / Amount'],['map-credit','Credit (optional)']];
+  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">';
+  for (var j = 0; j < fields.length; j++) {
+    html += '<div><label class="form-label">' + fields[j][1] + '</label><select id="' + fields[j][0] + '" style="' + selStyle + '">' + opts + '</select></div>';
+  }
+  html += '</div><p style="font-size:11px;color:var(--text-muted)">* required</p>';
+  document.getElementById('map-modal-body').innerHTML = html;
+  function trySelect(id) {
+    var terms = Array.prototype.slice.call(arguments, 1);
+    var sel = document.getElementById(id);
+    for (var i = 0; i < headers.length; i++) {
+      var hl = headers[i].toLowerCase();
+      for (var j = 0; j < terms.length; j++) {
+        if (hl.indexOf(terms[j]) !== -1) { sel.value = i; return; }
+      }
+    }
+  }
+  trySelect('map-date', 'date', 'posted');
+  trySelect('map-desc', 'desc', 'merchant', 'payee', 'detail', 'memo');
+  trySelect('map-debit', 'debit', 'withdraw', 'charge', 'amount');
+  trySelect('map-credit', 'credit', 'payment', 'deposit');
   document.getElementById('map-modal').classList.add('open');
 }
 
 function applyManualMapping() {
-  if (!_pendingCSV) return;
-  const g = id => parseInt(document.getElementById(id).value);
-  const mapping = { date: g('map-date'), desc: g('map-desc'), debit: g('map-debit'), credit: g('map-credit'), amt: -1 };
-  if (mapping.date < 0 || mapping.desc < 0) { alert('Date and Description columns are required.'); return; }
-  const txs = rowsToTransactions(_pendingCSV.headers, _pendingCSV.rows, mapping);
+  if (!pendingCSV) return;
+  var mapping = {
+    date: parseInt(document.getElementById('map-date').value, 10),
+    desc: parseInt(document.getElementById('map-desc').value, 10),
+    debit: parseInt(document.getElementById('map-debit').value, 10),
+    credit: parseInt(document.getElementById('map-credit').value, 10),
+    amt: -1
+  };
+  if (mapping.date < 0 || mapping.desc < 0) { alert('Date and Description are required.'); return; }
+  var txs = rowsToTransactions(pendingCSV.headers, pendingCSV.rows, mapping);
   closeMapModal();
-  if (txs.length === 0) { S.ui.error = 'No transactions found with that mapping. Check your column selections.'; render(); return; }
-  saveStatement(_pendingCSV.filename, txs);
+  if (txs.length === 0) { S.ui.error = 'No transactions found. Check column selections.'; render(); return; }
+  saveStatement(pendingCSV.filename, txs);
 }
 
 function processCSVFile(file) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    const {headers, rows} = parseCSV(e.target.result);
-    const mapping = detectColumns(headers);
-    if (!mapping) {
-      openMapModal(headers, rows, file.name.replace(/\.[^.]+$/,''));
-      return;
-    }
-    const txs = rowsToTransactions(headers, rows, mapping);
-    if (txs.length === 0) {
-      S.ui.error = "Couldn't extract transactions. Try the manual column mapper.";
-      openMapModal(headers, rows, file.name.replace(/\.[^.]+$/,''));
-      return;
-    }
-    saveStatement(file.name.replace(/\.[^.]+$/,''), txs);
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var parsed = parseCSV(e.target.result);
+    var mapping = detectColumns(parsed.headers);
+    if (!mapping) { openMapModal(parsed.headers, parsed.rows, file.name.replace(/\.[^.]+$/, '')); return; }
+    var txs = rowsToTransactions(parsed.headers, parsed.rows, mapping);
+    if (txs.length === 0) { openMapModal(parsed.headers, parsed.rows, file.name.replace(/\.[^.]+$/, '')); return; }
+    saveStatement(file.name.replace(/\.[^.]+$/, ''), txs);
   };
   reader.readAsText(file);
 }
 
+function processFiles(files) {
+  if (!files || files.length === 0) return;
+  for (var i = 0; i < files.length; i++) processCSVFile(files[i]);
+}
+
 function saveStatement(name, txs) {
-  const stmt = { id: uid(), name, uploadedAt: new Date().toISOString(), transactions: txs };
+  var stmt = {id: uid(), name: name, uploadedAt: new Date().toISOString(), transactions: txs};
   S.statements.unshift(stmt);
   persist();
   S.ui.stage = 'results';
@@ -283,11 +383,6 @@ function saveStatement(name, txs) {
   S.ui.filterCat = 'All';
   S.ui.error = '';
   render();
-}
-
-function processFiles(files) {
-  if (!files || files.length === 0) return;
-  Array.from(files).forEach(f => processCSVFile(f));
 }
 
 // ── Statement actions ─────────────────────────────────────────────────────────
@@ -300,7 +395,7 @@ function setFilterMonth(m) { S.ui.filterMonth = m; render(); }
 function deleteStatement(id) {
   if (S.ui.pendingDelete === id) {
     S.ui.pendingDelete = null;
-    S.statements = S.statements.filter(s => s.id !== id);
+    S.statements = S.statements.filter(function(s) { return s.id !== id; });
     if (S.ui.activeStmtId === id) {
       S.ui.activeStmtId = S.statements.length ? S.statements[0].id : null;
       S.ui.stage = S.statements.length ? 'results' : 'upload';
@@ -312,26 +407,28 @@ function deleteStatement(id) {
 function cancelDelete() { S.ui.pendingDelete = null; render(); }
 
 function importStatement(stmtId) {
-  const stmt = S.statements.find(s => s.id === stmtId);
+  var stmt = null;
+  for (var i = 0; i < S.statements.length; i++) { if (S.statements[i].id === stmtId) { stmt = S.statements[i]; break; } }
   if (!stmt) return;
   if (stmt.importedAt) {
-    S.ui.importWarning = `Already imported on ${new Date(stmt.importedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'})}.`;
+    S.ui.importWarning = 'Already imported on ' + new Date(stmt.importedAt).toLocaleDateString('en-CA', {month:'long', day:'numeric', year:'numeric'}) + '.';
     S.ui.importedCount = 0;
     S.ui.subTab = 'log';
     render(); return;
   }
-  let added = 0;
-  stmt.transactions.forEach(t => {
-    const exists = S.transactions.some(tx =>
-      tx.date === t.date &&
-      Math.round(Math.abs(tx.amount)*100) === Math.round(t.amount*100) &&
-      (tx.merchant||'').toLowerCase() === (t.description||'').toLowerCase()
-    );
+  var added = 0;
+  for (var j = 0; j < stmt.transactions.length; j++) {
+    var t = stmt.transactions[j];
+    var exists = false;
+    for (var k = 0; k < S.transactions.length; k++) {
+      var tx = S.transactions[k];
+      if (tx.date === t.date && Math.round(Math.abs(tx.amount)*100) === Math.round(t.amount*100) && (tx.merchant||'').toLowerCase() === (t.description||'').toLowerCase()) { exists = true; break; }
+    }
     if (!exists) {
-      S.transactions.push({ id: uid(), date: t.date, amount: t.amount, merchant: t.description, category: t.category||'Other', type: 'expense', note: '', _stmtId: stmtId });
+      S.transactions.push({id: uid(), date: t.date, amount: t.amount, merchant: t.description, category: t.category || 'Other', type: 'expense', note: '', _stmtId: stmtId});
       added++;
     }
-  });
+  }
   stmt.importedAt = new Date().toISOString();
   persist();
   S.ui.importedCount = added;
@@ -340,269 +437,390 @@ function importStatement(stmtId) {
   render();
 }
 
+function clearLog() {
+  S.transactions = [];
+  for (var i = 0; i < S.statements.length; i++) delete S.statements[i].importedAt;
+  persist();
+  S.ui.importedCount = 0;
+  S.ui.importWarning = null;
+  render();
+}
+
 // ── Category picker ───────────────────────────────────────────────────────────
 function toggleCatPicker(key, btnEl) {
   if (S.ui.editingTx === key) { S.ui.editingTx = null; S.ui.catPickerRect = null; }
   else {
     S.ui.editingTx = key;
-    if (btnEl) { const r = btnEl.getBoundingClientRect(); S.ui.catPickerRect = {top: r.bottom+6, left: r.left}; }
+    if (btnEl) { var r = btnEl.getBoundingClientRect(); S.ui.catPickerRect = {top: r.bottom + 6, left: r.left}; }
   }
   render();
 }
 function editStmtTxCat(stmtId, txIdx, cat) {
-  const stmt = S.statements.find(s => s.id === stmtId);
-  if (stmt && stmt.transactions[txIdx]) { stmt.transactions[txIdx].category = cat; persist(); }
+  for (var i = 0; i < S.statements.length; i++) {
+    if (S.statements[i].id === stmtId && S.statements[i].transactions[txIdx]) {
+      S.statements[i].transactions[txIdx].category = cat; persist(); break;
+    }
+  }
   S.ui.editingTx = null; render();
 }
 function editLogTxCat(txId, cat) {
-  const tx = S.transactions.find(t => t.id === txId);
-  if (tx) { tx.category = cat; persist(); }
+  for (var i = 0; i < S.transactions.length; i++) { if (S.transactions[i].id === txId) { S.transactions[i].category = cat; persist(); break; } }
   S.ui.editingTx = null; render();
 }
 function addCustomCat(name, icon) {
-  name = name.trim(); if (!name) return;
-  const c = loadCustomCats(); c[name] = {icon: icon||'🏷️', color:'#94a3b8', custom:true}; saveCustomCats(c); refreshCats();
+  name = (name || '').trim(); if (!name) return;
+  var c = loadCustomCats(); c[name] = {icon: icon || '🏷️', color: '#94a3b8', custom: true}; saveCustomCats(c); refreshCats();
   S.ui.addingCat = false; render();
 }
 function deleteCustomCat(name) {
-  const c = loadCustomCats(); delete c[name]; saveCustomCats(c); refreshCats(); render();
+  var c = loadCustomCats(); delete c[name]; saveCustomCats(c); refreshCats(); render();
 }
 
-function catPickerHtml(key, currentCat, onSelectJs) {
-  const isOpen = S.ui.editingTx === key;
-  const ci = CATS[currentCat] || CATS['Other'];
-  const label = (ci.icon||'') + ' ' + currentCat;
+function catPickerHtml(key, currentCat, onSelectFn) {
+  var isOpen = S.ui.editingTx === key;
+  var ci = CATS[currentCat] || CATS['Other'];
+  var label = (ci.icon || '') + ' ' + currentCat;
   if (isOpen) {
-    const custom = loadCustomCats();
-    const isAddingCat = S.ui.addingCat === key;
-    let opts = Object.entries(CATS).map(([cat,meta]) => {
-      const isCustom = !!custom[cat];
-      const del = isCustom ? `<span onclick="event.stopPropagation();deleteCustomCat('${cat}')" style="opacity:.4;cursor:pointer;font-size:10px;margin-left:4px">✕</span>` : '';
-      return `<button onclick="event.stopPropagation();${onSelectJs(cat)}" style="display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:${cat===currentCat?'var(--bg)':'transparent'};color:${meta.color};font-size:12px;font-weight:${cat===currentCat?'600':'400'};cursor:pointer;font-family:inherit"><span>${meta.icon} ${cat}</span>${del}</button>`;
-    }).join('');
-    const addSection = isAddingCat
-      ? `<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:6px;padding:6px"><div style="display:flex;gap:4px;margin-bottom:4px"><input id="nci" placeholder="🏷️" style="width:36px;border:1px solid var(--border);border-radius:6px;padding:4px;font-size:14px;text-align:center;background:var(--bg)" maxlength="2" onclick="event.stopPropagation()"><input id="ncn" placeholder="Category name" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--bg);font-family:inherit;min-width:0" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();addCustomCat(document.getElementById('ncn').value,document.getElementById('nci').value)}"></div><div style="display:flex;gap:4px"><button onclick="event.stopPropagation();addCustomCat(document.getElementById('ncn').value,document.getElementById('nci').value)" style="flex:1;padding:5px;border:none;border-radius:6px;background:var(--text);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Add</button><button onclick="event.stopPropagation();S.ui.addingCat=false;render()" style="flex:1;padding:5px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;cursor:pointer;font-family:inherit">Cancel</button></div></div>`
-      : `<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:4px"><button onclick="event.stopPropagation();S.ui.addingCat='${key}';render()" style="display:block;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:inherit">+ Add category</button></div>`;
-    S.ui._catDropdown = opts + addSection;
+    var custom = loadCustomCats();
+    var isAdding = S.ui.addingCat === key;
+    var opts = '';
+    var catKeys = Object.keys(CATS);
+    for (var i = 0; i < catKeys.length; i++) {
+      var cat = catKeys[i], meta = CATS[cat];
+      var isCustom = !!custom[cat];
+      var del = isCustom ? '<span onclick="event.stopPropagation();deleteCustomCat(\'' + cat + '\')" style="opacity:.4;cursor:pointer;font-size:10px;margin-left:4px">✕</span>' : '';
+      opts += '<button onclick="event.stopPropagation();' + onSelectFn(cat) + '" style="display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:' + (cat === currentCat ? 'var(--bg)' : 'transparent') + ';color:' + meta.color + ';font-size:12px;font-weight:' + (cat === currentCat ? '600' : '400') + ';cursor:pointer;font-family:inherit"><span>' + meta.icon + ' ' + cat + '</span>' + del + '</button>';
+    }
+    var addSection = isAdding
+      ? '<div style="border-top:1px solid var(--border-light);margin-top:4px;padding:6px"><div style="display:flex;gap:4px;margin-bottom:4px"><input id="nci" placeholder="🏷️" style="width:36px;border:1px solid var(--border);border-radius:6px;padding:4px;font-size:14px;text-align:center;background:var(--bg)" maxlength="2" onclick="event.stopPropagation()"><input id="ncn" placeholder="Category name" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--bg);font-family:inherit;min-width:0" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){event.stopPropagation();addCustomCat(document.getElementById(\'ncn\').value,document.getElementById(\'nci\').value)}"></div><div style="display:flex;gap:4px"><button onclick="event.stopPropagation();addCustomCat(document.getElementById(\'ncn\').value,document.getElementById(\'nci\').value)" style="flex:1;padding:5px;border:none;border-radius:6px;background:var(--text);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Add</button><button onclick="event.stopPropagation();S.ui.addingCat=false;render()" style="flex:1;padding:5px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;cursor:pointer;font-family:inherit">Cancel</button></div></div>'
+      : '<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:4px"><button onclick="event.stopPropagation();S.ui.addingCat=\'' + key + '\';render()" style="display:block;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:inherit">+ Add category</button></div>';
+    S.ui.catDropdown = opts + addSection;
   }
-  return `<div style="position:relative;display:inline-block"><button onclick="event.stopPropagation();toggleCatPicker('${key}',this)" style="font-size:11px;padding:2px 8px 2px 6px;border-radius:99px;background:var(--bg);color:${ci.color};font-weight:500;white-space:nowrap;border:1px solid ${isOpen?'var(--text)':'transparent'};cursor:pointer;font-family:inherit">${label} ✎</button></div>`;
+  return '<div style="position:relative;display:inline-block"><button onclick="event.stopPropagation();toggleCatPicker(\'' + key + '\',this)" style="font-size:11px;padding:2px 8px 2px 6px;border-radius:99px;background:var(--bg);color:' + ci.color + ';font-weight:500;white-space:nowrap;border:1px solid ' + (isOpen ? 'var(--text)' : 'transparent') + ';cursor:pointer;font-family:inherit">' + label + ' ✎</button></div>';
 }
 
 function splitPickerHtml(key, txId, currentSplit) {
-  const active = currentSplit || 1;
-  const isOpen = S.ui.splittingTx === key;
-  const isSplit = active < 1;
-  const label = isSplit ? ({0.5:'½',0.333:'⅓',0.25:'¼'}[Math.round(active*100)/100]||'÷') : '÷';
-  const splits = [[1,'Full'],[0.5,'½ Split'],[1/3,'⅓ Split'],[0.25,'¼ Split']];
-  const dropdown = isOpen ? `<div style="position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);z-index:50;min-width:130px;padding:6px">${splits.map(([v,l])=>`<button onclick="event.stopPropagation();setLogTxSplit('${txId}',${v})" style="display:block;width:100%;text-align:left;padding:7px 12px;border:none;border-radius:6px;background:${Math.abs(v-active)<.01?'var(--bg)':'transparent'};font-size:12px;font-weight:${Math.abs(v-active)<.01?'600':'400'};cursor:pointer;font-family:inherit;color:var(--text)">${l}</button>`).join('')}</div>` : '';
-  return `<div style="position:relative;display:inline-block"><button onclick="event.stopPropagation();toggleSplit('${key}')" style="font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid ${isSplit?'var(--text)':isOpen?'var(--border)':'transparent'};background:${isSplit?'var(--text)':'transparent'};color:${isSplit?'#fff':'var(--text-muted)'};cursor:pointer;font-family:inherit;white-space:nowrap">${isSplit?'÷ '+label:'÷'}</button>${dropdown}</div>`;
+  var active = currentSplit || 1;
+  var isOpen = S.ui.splittingTx === key;
+  var isSplit = active < 1;
+  var splits = [[1,'Full'],[0.5,'½ Split'],[1/3,'⅓ Split'],[0.25,'¼ Split']];
+  var dropdown = '';
+  if (isOpen) {
+    dropdown = '<div style="position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);z-index:50;min-width:130px;padding:6px">';
+    for (var i = 0; i < splits.length; i++) {
+      var v = splits[i][0], lbl = splits[i][1];
+      var isAct = Math.abs(v - active) < 0.01;
+      dropdown += '<button onclick="event.stopPropagation();setLogTxSplit(\'' + txId + '\',' + v + ')" style="display:block;width:100%;text-align:left;padding:7px 12px;border:none;border-radius:6px;background:' + (isAct ? 'var(--bg)' : 'transparent') + ';font-size:12px;font-weight:' + (isAct ? '600' : '400') + ';cursor:pointer;font-family:inherit;color:var(--text)">' + lbl + '</button>';
+    }
+    dropdown += '</div>';
+  }
+  var splitLabel = isSplit ? (Math.abs(active - 0.5) < 0.01 ? '½' : Math.abs(active - 1/3) < 0.01 ? '⅓' : '¼') : '÷';
+  return '<div style="position:relative;display:inline-block"><button onclick="event.stopPropagation();toggleSplit(\'' + key + '\')" style="font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid ' + (isSplit ? 'var(--text)' : isOpen ? 'var(--border)' : 'transparent') + ';background:' + (isSplit ? 'var(--text)' : 'transparent') + ';color:' + (isSplit ? '#fff' : 'var(--text-muted)') + ';cursor:pointer;font-family:inherit;white-space:nowrap">' + (isSplit ? '÷ ' + splitLabel : '÷') + '</button>' + dropdown + '</div>';
 }
 function toggleSplit(key) { S.ui.splittingTx = S.ui.splittingTx === key ? null : key; render(); }
-function setLogTxSplit(txId, v) { const tx = S.transactions.find(t=>t.id===txId); if(tx){tx._split=v;persist();} S.ui.splittingTx=null; render(); }
+function setLogTxSplit(txId, v) {
+  for (var i = 0; i < S.transactions.length; i++) { if (S.transactions[i].id === txId) { S.transactions[i]._split = v; persist(); break; } }
+  S.ui.splittingTx = null; render();
+}
 
-function toggleSelectTx(id) { const s=S.ui.selectedTxIds; const i=s.indexOf(id); i===-1?s.push(id):s.splice(i,1); render(); }
-function toggleSelectAll(ids) { const s=S.ui.selectedTxIds; const all=ids.every(id=>s.includes(id)); S.ui.selectedTxIds=all?[]:[...ids]; render(); }
-function bulkSetCat(cat) { (S.ui.selectedTxIds||[]).forEach(id=>{ const tx=S.transactions.find(t=>t.id===id); if(tx)tx.category=cat; }); persist(); S.ui.selectedTxIds=[]; S.ui.bulkCatOpen=false; render(); }
-function toggleBulkCat(el) { S.ui.bulkCatOpen=!S.ui.bulkCatOpen; if(S.ui.bulkCatOpen&&el){const r=el.getBoundingClientRect();S.ui.bulkCatRect={top:r.bottom+4,left:r.left};} render(); }
+function toggleSelectTx(id) {
+  var s = S.ui.selectedTxIds, idx = s.indexOf(id);
+  if (idx === -1) s.push(id); else s.splice(idx, 1); render();
+}
+function toggleSelectAll(ids) {
+  var s = S.ui.selectedTxIds;
+  var all = ids.every(function(id) { return s.indexOf(id) !== -1; });
+  S.ui.selectedTxIds = all ? [] : ids.slice(); render();
+}
+function bulkSetCat(cat) {
+  var sel = S.ui.selectedTxIds || [];
+  for (var i = 0; i < sel.length; i++) {
+    for (var j = 0; j < S.transactions.length; j++) { if (S.transactions[j].id === sel[i]) { S.transactions[j].category = cat; break; } }
+  }
+  persist(); S.ui.selectedTxIds = []; S.ui.bulkCatOpen = false; render();
+}
+function toggleBulkCat(el) {
+  S.ui.bulkCatOpen = !S.ui.bulkCatOpen;
+  if (S.ui.bulkCatOpen && el) { var r = el.getBoundingClientRect(); S.ui.bulkCatRect = {top: r.bottom + 4, left: r.left}; }
+  render();
+}
 function setLogSearch(q) {
   S.ui.logSearch = q; S.ui.selectedTxIds = [];
-  const tc = document.getElementById('tab-content');
-  const scroll = tc?.querySelector('.stmt-scroll')?.scrollTop || 0;
+  var tc = document.getElementById('tab-content');
+  var scroll = tc && tc.querySelector('.stmt-scroll') ? tc.querySelector('.stmt-scroll').scrollTop : 0;
   tc.innerHTML = renderMain();
-  const ns = tc?.querySelector('.stmt-scroll'); if(ns) ns.scrollTop = scroll;
-  const inp = document.getElementById('log-search-input'); if(inp){inp.focus();const l=inp.value.length;inp.setSelectionRange(l,l);}
+  var ns = tc.querySelector('.stmt-scroll'); if (ns) ns.scrollTop = scroll;
+  var inp = document.getElementById('log-search-input');
+  if (inp) { inp.focus(); var l = inp.value.length; inp.setSelectionRange(l, l); }
   injectPortals();
 }
 
-// ── Main render ───────────────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────────────────
 function render() {
-  const tc = document.getElementById('tab-content'); if(!tc) return;
-  S.ui._catDropdown = null;
-  const scroll = tc.querySelector('.stmt-scroll')?.scrollTop || 0;
+  var tc = document.getElementById('tab-content'); if (!tc) return;
+  S.ui.catDropdown = null;
+  var scroll = tc.querySelector('.stmt-scroll') ? tc.querySelector('.stmt-scroll').scrollTop : 0;
   tc.innerHTML = renderMain();
-  const ns = tc.querySelector('.stmt-scroll'); if(ns) ns.scrollTop = scroll;
+  var ns = tc.querySelector('.stmt-scroll'); if (ns) ns.scrollTop = scroll;
   injectPortals();
 }
 
 function injectPortals() {
-  document.getElementById('stmt-cat-portal')?.remove();
-  document.getElementById('stmt-bulk-portal')?.remove();
-  const ui = S.ui;
+  var existing = document.getElementById('stmt-cat-portal');
+  if (existing) existing.parentNode.removeChild(existing);
+  var existing2 = document.getElementById('stmt-bulk-portal');
+  if (existing2) existing2.parentNode.removeChild(existing2);
 
-  if (ui.editingTx && ui.catPickerRect && ui._catDropdown) {
-    const r = ui.catPickerRect;
-    const p = document.createElement('div');
+  var ui = S.ui;
+  if (ui.editingTx && ui.catPickerRect && ui.catDropdown) {
+    var r = ui.catPickerRect;
+    var p = document.createElement('div');
     p.id = 'stmt-cat-portal';
-    const dropH = 320; const viewH = window.innerHeight;
-    const up = (r.top + dropH) > viewH - 20;
-    p.style.cssText = `position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:190px;padding:6px;max-height:320px;overflow-y:auto;${up?'bottom:'+(viewH-r.top+6)+'px;':'top:'+r.top+'px;'}left:${r.left}px`;
-    p.innerHTML = ui._catDropdown;
-    p.addEventListener('click', e => e.stopPropagation());
+    var dropH = 320, viewH = window.innerHeight;
+    var up = (r.top + dropH) > viewH - 20;
+    p.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:190px;padding:6px;max-height:320px;overflow-y:auto;' + (up ? 'bottom:' + (viewH - r.top + 6) + 'px;' : 'top:' + r.top + 'px;') + 'left:' + r.left + 'px';
+    p.innerHTML = ui.catDropdown;
+    p.addEventListener('click', function(e) { e.stopPropagation(); });
     document.body.appendChild(p);
   }
 
   if (ui.bulkCatOpen && ui.bulkCatRect) {
-    const r = ui.bulkCatRect;
-    const p = document.createElement('div');
-    p.id = 'stmt-bulk-portal';
-    const viewH = window.innerHeight; const dropH = 340;
-    const up = (r.top + dropH) > viewH - 20;
-    p.style.cssText = `position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:190px;padding:6px;max-height:340px;overflow-y:auto;${up?'bottom:'+(viewH-r.top+4)+'px;':'top:'+r.top+'px;'}left:${r.left}px`;
-    let html = `<div style="padding:6px 10px 4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Set category for ${ui.selectedTxIds.length}</div>`;
-    Object.entries(CATS).forEach(([cat,meta]) => { html += `<button onclick="bulkSetCat('${cat}')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:${meta.color};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">${meta.icon} ${cat}</button>`; });
-    p.innerHTML = html;
-    p.addEventListener('click', e => e.stopPropagation());
-    document.body.appendChild(p);
+    var rb = ui.bulkCatRect;
+    var pb = document.createElement('div');
+    pb.id = 'stmt-bulk-portal';
+    var viewHb = window.innerHeight;
+    var upb = (rb.top + 340) > viewHb - 20;
+    pb.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:190px;padding:6px;max-height:340px;overflow-y:auto;' + (upb ? 'bottom:' + (viewHb - rb.top + 4) + 'px;' : 'top:' + rb.top + 'px;') + 'left:' + rb.left + 'px';
+    var bhtml = '<div style="padding:6px 10px 4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Set category for ' + ui.selectedTxIds.length + '</div>';
+    var catKeys = Object.keys(CATS);
+    for (var ci = 0; ci < catKeys.length; ci++) {
+      var cname = catKeys[ci], cmeta = CATS[cname];
+      bhtml += '<button onclick="bulkSetCat(\'' + cname + '\')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:' + cmeta.color + ';font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">' + cmeta.icon + ' ' + cname + '</button>';
+    }
+    pb.innerHTML = bhtml;
+    pb.addEventListener('click', function(e) { e.stopPropagation(); });
+    document.body.appendChild(pb);
   }
 
   if (ui.editingTx || ui.splittingTx || ui.bulkCatOpen) {
-    setTimeout(() => {
-      const h = e => {
-        const inP = e.target.closest('#stmt-cat-portal,#stmt-bulk-portal,[onclick*="toggleCatPicker"],[onclick*="toggleSplit"],[onclick*="toggleBulkCat"]');
-        if (!inP) { ui.editingTx=null;ui.splittingTx=null;ui.bulkCatOpen=false;ui.catPickerRect=null;ui.bulkCatRect=null; document.getElementById('stmt-cat-portal')?.remove(); document.getElementById('stmt-bulk-portal')?.remove(); document.removeEventListener('click',h); render(); }
-      };
-      document.addEventListener('click', h);
+    setTimeout(function() {
+      function handler(e) {
+        var inP = e.target.closest && (e.target.closest('#stmt-cat-portal') || e.target.closest('#stmt-bulk-portal') || e.target.closest('[onclick*="toggleCatPicker"]') || e.target.closest('[onclick*="toggleSplit"]') || e.target.closest('[onclick*="toggleBulkCat"]'));
+        if (!inP) {
+          ui.editingTx = null; ui.splittingTx = null; ui.bulkCatOpen = false;
+          var p1 = document.getElementById('stmt-cat-portal'); if (p1) p1.parentNode.removeChild(p1);
+          var p2 = document.getElementById('stmt-bulk-portal'); if (p2) p2.parentNode.removeChild(p2);
+          document.removeEventListener('click', handler);
+          render();
+        }
+      }
+      document.addEventListener('click', handler);
     }, 0);
   }
 }
 
 function renderMain() {
-  const ui = S.ui;
-  if (S.statements.length && ui.stage === 'upload' && !ui.error) { ui.stage = 'results'; ui.activeStmtId = ui.activeStmtId || S.statements[0].id; }
-  const activeStmt = ui.activeStmtId ? S.statements.find(s => s.id === ui.activeStmtId) : null;
+  var ui = S.ui;
+  if (S.statements.length && ui.stage === 'upload' && !ui.error) {
+    ui.stage = 'results';
+    ui.activeStmtId = ui.activeStmtId || S.statements[0].id;
+  }
+  var activeStmt = null;
+  if (ui.activeStmtId) { for (var i = 0; i < S.statements.length; i++) { if (S.statements[i].id === ui.activeStmtId) { activeStmt = S.statements[i]; break; } } }
 
-  // ── Sidebar ──
-  const sidebarItems = S.statements.map(stmt => {
-    const total = stmt.transactions.reduce((s,t)=>s+t.amount,0);
-    const isActive = stmt.id === ui.activeStmtId && ui.stage !== 'upload';
+  // Sidebar
+  var sidebarItems = '';
+  for (var si = 0; si < S.statements.length; si++) {
+    var stmt = S.statements[si];
+    var total = 0; for (var ti = 0; ti < stmt.transactions.length; ti++) total += stmt.transactions[ti].amount;
+    var isActive = stmt.id === ui.activeStmtId && ui.stage !== 'upload';
     if (ui.pendingDelete === stmt.id) {
-      return `<div style="padding:10px 12px;border-radius:10px;background:var(--red-bg);border:1px solid #f5c6c2;margin-bottom:6px"><div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px">Delete "${stmt.name}"?</div><div style="display:flex;gap:6px"><button onclick="deleteStatement('${stmt.id}')" style="flex:1;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:5px;cursor:pointer;font-family:inherit">Yes</button><button onclick="cancelDelete()" style="flex:1;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:500;padding:5px;cursor:pointer;font-family:inherit">No</button></div></div>`;
+      sidebarItems += '<div style="padding:10px 12px;border-radius:10px;background:var(--red-bg);border:1px solid #f5c6c2;margin-bottom:6px"><div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px">Delete &quot;' + stmt.name + '&quot;?</div><div style="display:flex;gap:6px"><button onclick="deleteStatement(\'' + stmt.id + '\')" style="flex:1;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:5px;cursor:pointer;font-family:inherit">Yes</button><button onclick="cancelDelete()" style="flex:1;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:500;padding:5px;cursor:pointer;font-family:inherit">No</button></div></div>';
+    } else {
+      sidebarItems += '<div onclick="setActive(\'' + stmt.id + '\')" style="padding:10px 12px;border-radius:10px;cursor:pointer;background:' + (isActive?'var(--bg)':'transparent') + ';border:1px solid ' + (isActive?'var(--border)':'transparent') + ';margin-bottom:6px;transition:all .15s"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + stmt.name + '</div><div style="display:flex;justify-content:space-between;margin-top:3px;align-items:center"><span style="font-size:11px;color:var(--text-muted)">' + stmt.transactions.length + ' txns</span><div style="display:flex;align-items:center;gap:5px">' + (stmt.importedAt?'<span style="font-size:10px;color:var(--green);font-weight:600">✓</span>':'') + '<span style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--red)">−' + fmtCAD(total) + '</span></div></div></div>';
     }
-    return `<div onclick="setActive('${stmt.id}')" style="padding:10px 12px;border-radius:10px;cursor:pointer;background:${isActive?'var(--bg)':'transparent'};border:1px solid ${isActive?'var(--border)':'transparent'};margin-bottom:6px;transition:all .15s"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stmt.name}</div><div style="display:flex;justify-content:space-between;margin-top:3px;align-items:center"><span style="font-size:11px;color:var(--text-muted)">${stmt.transactions.length} txns</span><div style="display:flex;align-items:center;gap:5px">${stmt.importedAt?'<span style="font-size:10px;color:var(--green);font-weight:600">✓</span>':''}<span style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--red)">−${fmtCAD(total)}</span></div></div></div>`;
-  }).join('');
+  }
+  var sidebar = '<div style="width:200px;flex-shrink:0"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Statements</div><button onclick="newUpload()" style="background:var(--text);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;font-family:inherit">+ New</button></div>' + (sidebarItems || '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No statements yet</div>') + '</div>';
 
-  const sidebar = `<div style="width:200px;flex-shrink:0"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Statements</div><button onclick="newUpload()" style="background:var(--text);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;font-family:inherit">+ New</button></div>${sidebarItems||'<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No statements yet</div>'}</div>`;
-
-  // ── Upload screen ──
+  // Upload screen
   if (ui.stage === 'upload' || !activeStmt) {
-    const errHtml = ui.error ? `<div style="background:var(--red-bg);border:1px solid #f5c6c2;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--red)">⚠ ${ui.error}</div>` : '';
-    const main = `<div style="flex:1">${errHtml}<label style="cursor:pointer;display:block"><input type="file" accept=".csv,text/csv" multiple style="display:none" onchange="processFiles(this.files);this.value=''"><div style="border:2px dashed var(--border);border-radius:18px;padding:48px 32px;text-align:center;transition:all .2s" ondragover="event.preventDefault();this.style.borderColor='var(--text)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="event.preventDefault();this.style.borderColor='var(--border)';processFiles(event.dataTransfer.files)"><div style="font-size:36px;margin-bottom:14px">📊</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">Drop your CSV statement here</div><div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">Export from TD, RBC, Scotiabank, CIBC, BMO, or Amex · Click "? How to export CSV" above for help</div><div style="display:inline-block;background:var(--text);color:#fff;padding:9px 22px;border-radius:11px;font-size:13px;font-weight:500">Browse Files</div></div></label><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px">${[['Auto-categorizes','Groceries, dining, transport & more'],['Instant','No AI wait time, no API key'],['Edit anything','Fix categories after import']].map(([t,s])=>`<div style="background:var(--surface);border-radius:11px;border:1px solid var(--border-light);padding:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">✓ ${t}</div><div style="font-size:12px;color:var(--text-muted)">${s}</div></div>`).join('')}</div></div>`;
-    return `<div style="margin-bottom:28px"><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Statement Analyzer</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">Upload a CSV export from your bank · instant categorization</div></div><div style="display:flex;gap:24px;align-items:flex-start">${sidebar}${main}</div>`;
+    var errHtml = ui.error ? '<div style="background:var(--red-bg);border:1px solid #f5c6c2;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--red)">⚠ ' + ui.error + '</div>' : '';
+    var main = '<div style="flex:1">' + errHtml + '<label style="cursor:pointer;display:block"><input type="file" accept=".csv,text/csv" multiple style="display:none" onchange="processFiles(this.files);this.value=\'\'"><div style="border:2px dashed var(--border);border-radius:18px;padding:48px 32px;text-align:center;transition:all .2s" ondragover="event.preventDefault();this.style.borderColor=\'var(--text)\'" ondragleave="this.style.borderColor=\'var(--border)\'" ondrop="event.preventDefault();this.style.borderColor=\'var(--border)\';processFiles(event.dataTransfer.files)"><div style="font-size:36px;margin-bottom:14px">📊</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">Drop your CSV statement here</div><div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">Export from TD, RBC, Scotiabank, CIBC, BMO, or Amex · Click &quot;? How to export CSV&quot; for help</div><div style="display:inline-block;background:var(--text);color:#fff;padding:9px 22px;border-radius:11px;font-size:13px;font-weight:500">Browse Files</div></div></label><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px"><div style="background:var(--surface);border-radius:11px;border:1px solid var(--border-light);padding:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">✓ Auto-categorizes</div><div style="font-size:12px;color:var(--text-muted)">Groceries, dining, transport &amp; more</div></div><div style="background:var(--surface);border-radius:11px;border:1px solid var(--border-light);padding:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">✓ Instant</div><div style="font-size:12px;color:var(--text-muted)">No AI, no API key needed</div></div><div style="background:var(--surface);border-radius:11px;border:1px solid var(--border-light);padding:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">✓ Edit anything</div><div style="font-size:12px;color:var(--text-muted)">Fix categories after import</div></div></div></div>';
+    return '<div style="margin-bottom:28px"><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Statement Analyzer</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">Upload a CSV export · instant categorization, no API key needed</div></div><div style="display:flex;gap:24px;align-items:flex-start">' + sidebar + main + '</div>';
   }
 
-  // ── Results screen ──
-  const stmt = activeStmt;
-  const allTxs = stmt.transactions;
-  const allLogTxs = [...S.transactions].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  var stmt = activeStmt;
+  var allTxs = stmt.transactions;
+  var allLogTxs = S.transactions.slice().sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
 
-  // Month filter options
-  const monthSet = new Set();
-  allLogTxs.forEach(t=>{ if(t.date) monthSet.add(t.date.slice(0,7)); });
-  allTxs.forEach(t=>{ if(t.date) monthSet.add(t.date.slice(0,7)); });
-  const months = Array.from(monthSet).sort().reverse();
-  const ml = m => { const [y,mo]=m.split('-'); return new Date(+y,+mo-1,1).toLocaleString('en-CA',{month:'short',year:'numeric'}); };
+  // Build month list from YYYY-MM
+  var monthSet = {};
+  for (var mi = 0; mi < allLogTxs.length; mi++) { var ym = dateToYYYYMM(allLogTxs[mi].date); if (ym) monthSet[ym] = true; }
+  for (var mj = 0; mj < allTxs.length; mj++) { var ym2 = dateToYYYYMM(allTxs[mj].date); if (ym2) monthSet[ym2] = true; }
+  var months = Object.keys(monthSet).sort().reverse();
 
-  const filteredLog = ui.filterMonth==='All' ? allLogTxs : allLogTxs.filter(t=>t.date&&t.date.startsWith(ui.filterMonth));
-  const monthBar = months.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:2px">Month:</span>${['All',...months].map(m=>`<button onclick="setFilterMonth('${m}')" style="padding:5px 12px;border-radius:99px;border:1px solid ${ui.filterMonth===m?'var(--text)':'var(--border)'};background:${ui.filterMonth===m?'var(--text)':'transparent'};color:${ui.filterMonth===m?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">${m==='All'?'All':ml(m)}</button>`).join('')}</div>` : '';
+  var filteredLog = ui.filterMonth === 'All' ? allLogTxs : allLogTxs.filter(function(t) { return t.date && t.date.slice(0,7) === ui.filterMonth; });
 
-  const subTabs = [{id:'breakdown',label:'Breakdown'},{id:'log',label:`Imported Log (${allLogTxs.length})`},{id:'transactions',label:`This Statement (${allTxs.length})`}];
-  const tabBar = `<div class="tab-bar" style="margin-bottom:18px">${subTabs.map(t=>`<button class="tab-btn${ui.subTab===t.id?' active':''}" onclick="setSubTab('${t.id}')">${t.label}</button>`).join('')}</div>`;
+  var monthBtns = '<button onclick="setFilterMonth(\'All\')" style="padding:5px 12px;border-radius:99px;border:1px solid ' + (ui.filterMonth==='All'?'var(--text)':'var(--border)') + ';background:' + (ui.filterMonth==='All'?'var(--text)':'transparent') + ';color:' + (ui.filterMonth==='All'?'#fff':'var(--text-secondary)') + ';font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">All</button>';
+  for (var mbi = 0; mbi < months.length; mbi++) {
+    var m = months[mbi], lbl = monthLabel(m);
+    monthBtns += '<button onclick="setFilterMonth(\'' + m + '\')" style="padding:5px 12px;border-radius:99px;border:1px solid ' + (ui.filterMonth===m?'var(--text)':'var(--border)') + ';background:' + (ui.filterMonth===m?'var(--text)':'transparent') + ';color:' + (ui.filterMonth===m?'#fff':'var(--text-secondary)') + ';font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">' + lbl + '</button>';
+  }
+  var monthBar = months.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:2px">Month:</span>' + monthBtns + '</div>' : '';
 
-  const isPendingDel = ui.pendingDelete === stmt.id;
-  const deleteSection = isPendingDel
-    ? `<span style="font-size:12px;color:var(--red);font-weight:500;display:flex;align-items:center;gap:6px">Sure? <button onclick="deleteStatement('${stmt.id}')" style="background:var(--red);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">Yes</button><button onclick="cancelDelete()" style="background:transparent;border:1px solid var(--border);border-radius:5px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">No</button></span>`
-    : `<button onclick="deleteStatement('${stmt.id}')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--red)">Delete</button>`;
-  const importBtn = stmt.importedAt
-    ? `<button onclick="importStatement('${stmt.id}')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--green)">✓ Imported</button>`
-    : `<button onclick="importStatement('${stmt.id}')" class="btn btn-dark" style="font-size:12px;padding:7px 14px">↓ Import to Log</button>`;
+  var subTabs = [{id:'breakdown',label:'Breakdown'},{id:'log',label:'Imported Log (' + allLogTxs.length + ')'},{id:'transactions',label:'This Statement (' + allTxs.length + ')'}];
+  var tabBar = '<div class="tab-bar" style="margin-bottom:18px">';
+  for (var sti = 0; sti < subTabs.length; sti++) { tabBar += '<button class="tab-btn' + (ui.subTab===subTabs[sti].id?' active':'') + '" onclick="setSubTab(\'' + subTabs[sti].id + '\')">' + subTabs[sti].label + '</button>'; }
+  tabBar += '</div>';
 
-  let tabContent = '';
+  var isPendingDel = ui.pendingDelete === stmt.id;
+  var deleteSection = isPendingDel
+    ? '<span style="font-size:12px;color:var(--red);font-weight:500;display:flex;align-items:center;gap:6px">Sure? <button onclick="deleteStatement(\'' + stmt.id + '\')" style="background:var(--red);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">Yes</button><button onclick="cancelDelete()" style="background:transparent;border:1px solid var(--border);border-radius:5px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">No</button></span>'
+    : '<button onclick="deleteStatement(\'' + stmt.id + '\')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--red)">Delete</button>';
+  var importBtn = stmt.importedAt
+    ? '<button onclick="importStatement(\'' + stmt.id + '\')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--green)">✓ Imported</button>'
+    : '<button onclick="importStatement(\'' + stmt.id + '\')" class="btn btn-dark" style="font-size:12px;padding:7px 14px">↓ Import to Log</button>';
+
+  var tabContent = '';
 
   if (ui.subTab === 'breakdown') {
-    // Use global log for breakdown
-    const expTxs = filteredLog.filter(t=>t.type==='expense');
-    const total = expTxs.reduce((s,t)=>s+effectiveAmt(t),0);
-    const byCat = {};
-    expTxs.forEach(t=>{ const c=t.category||'Other'; if(!byCat[c]){byCat[c]={total:0,count:0};} byCat[c].total+=effectiveAmt(t); byCat[c].count++; });
-    const sorted = Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total);
-    const barMax = sorted[0]?sorted[0][1].total:1;
-    const importedCount = S.statements.filter(s=>s.importedAt).length;
-
-    const summaryCards = [
-      {label:'Total Spent',val:total>0?fmtCAD(total):'$0.00',color:'var(--red)'},
-      {label:'Transactions',val:expTxs.length,color:'var(--text)'},
-      {label:'Top Category',val:sorted[0]?sorted[0][0]:'—',color:'var(--text)'}
-    ].map(c=>`<div style="background:var(--bg);border-radius:11px;padding:14px 16px"><div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">${c.label}</div><div style="font-size:${c.label==='Top Category'?'13px':'18px'};font-weight:700;font-family:'DM Mono',monospace;color:${c.color}">${c.val}</div></div>`).join('');
-    const bars = sorted.length ? sorted.map(([cat,{total:ct,count}])=>{
-      const ci = CATS[cat]||CATS['Other']; const pct = total>0?(ct/total*100).toFixed(0):0;
-      return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>${ci.icon} ${cat} <span style="color:var(--text-muted);font-size:11px">(${count})</span></span><span style="font-family:'DM Mono',monospace;font-size:12px">${fmtCAD(ct)} <span style="color:var(--text-muted)">${pct}%</span></span></div><div style="height:4px;background:var(--border-light);border-radius:99px"><div style="height:100%;border-radius:99px;background:${ci.color};width:${(ct/barMax*100).toFixed(1)}%"></div></div></div>`;
-    }).join('') : `<div style="padding:24px 0;text-align:center;color:var(--text-muted);font-size:13px">${allLogTxs.length===0?'Import a statement to see your breakdown':'No transactions for this month'}</div>`;
-    tabContent = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">${summaryCards}</div><div class="card" style="padding:20px">${importedCount>0?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Across ${importedCount} imported statement${importedCount===1?'':'s'}</div>`:''}${bars}</div>`;
+    var expTxs = filteredLog.filter(function(t) { return t.type === 'expense'; });
+    var total = 0; for (var ei = 0; ei < expTxs.length; ei++) total += effectiveAmt(expTxs[ei]);
+    var byCat = {};
+    for (var bi = 0; bi < expTxs.length; bi++) {
+      var tc2 = expTxs[bi].category || 'Other';
+      if (!byCat[tc2]) byCat[tc2] = {total:0, count:0};
+      byCat[tc2].total += effectiveAmt(expTxs[bi]); byCat[tc2].count++;
+    }
+    var sorted = Object.keys(byCat).map(function(k) { return [k, byCat[k]]; }).sort(function(a,b) { return b[1].total - a[1].total; });
+    var barMax = sorted.length ? sorted[0][1].total : 1;
+    var importedCount = 0; for (var ic = 0; ic < S.statements.length; ic++) { if (S.statements[ic].importedAt) importedCount++; }
+    var summaryCards = '';
+    var cards = [{label:'Total Spent',val:total>0?fmtCAD(total):'$0.00',color:'var(--red)'},{label:'Transactions',val:String(expTxs.length),color:'var(--text)'},{label:'Top Category',val:sorted.length?sorted[0][0]:'—',color:'var(--text)'}];
+    for (var sci = 0; sci < cards.length; sci++) { summaryCards += '<div style="background:var(--bg);border-radius:11px;padding:14px 16px"><div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">' + cards[sci].label + '</div><div style="font-size:' + (cards[sci].label==='Top Category'?'13px':'18px') + ';font-weight:700;font-family:\'DM Mono\',monospace;color:' + cards[sci].color + '">' + cards[sci].val + '</div></div>'; }
+    var bars = '';
+    if (sorted.length) {
+      for (var bari = 0; bari < sorted.length; bari++) {
+        var cat = sorted[bari][0], ct = sorted[bari][1].total, cnt = sorted[bari][1].count;
+        var ci2 = CATS[cat] || CATS['Other'];
+        var pct = total > 0 ? (ct/total*100).toFixed(0) : 0;
+        bars += '<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>' + ci2.icon + ' ' + cat + ' <span style="color:var(--text-muted);font-size:11px">(' + cnt + ')</span></span><span style="font-family:\'DM Mono\',monospace;font-size:12px">' + fmtCAD(ct) + ' <span style="color:var(--text-muted)">' + pct + '%</span></span></div><div style="height:4px;background:var(--border-light);border-radius:99px"><div style="height:100%;border-radius:99px;background:' + ci2.color + ';width:' + (ct/barMax*100).toFixed(1) + '%"></div></div></div>';
+      }
+    } else { bars = '<div style="padding:24px 0;text-align:center;color:var(--text-muted);font-size:13px">' + (allLogTxs.length===0?'Import a statement to see your breakdown':'No transactions for this month') + '</div>'; }
+    tabContent = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">' + summaryCards + '</div><div class="card" style="padding:20px">' + (importedCount>0?'<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Across ' + importedCount + ' imported statement' + (importedCount===1?'':'s') + '</div>':'') + bars + '</div>';
 
   } else if (ui.subTab === 'log') {
-    const banner = ui.importWarning
-      ? `<div style="background:#fdf6ec;border:1px solid #f5d9a8;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92600a">⚠ ${ui.importWarning}</div>`
-      : ui.importedCount>0
-        ? `<div style="background:var(--green-bg);border:1px solid #c8ddd6;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--green)">✓ Imported ${ui.importedCount} transaction${ui.importedCount===1?'':'s'} into your log.</div>`
-        : '';
+    var banner = ui.importWarning
+      ? '<div style="background:#fdf6ec;border:1px solid #f5d9a8;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92600a">⚠ ' + ui.importWarning + '</div>'
+      : ui.importedCount > 0 ? '<div style="background:var(--green-bg);border:1px solid #c8ddd6;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--green)">✓ Imported ' + ui.importedCount + ' transaction' + (ui.importedCount===1?'':'s') + ' into your log.</div>' : '';
 
-    const stmtNames = {}; S.statements.forEach(s=>{ stmtNames[s.id]=s.name; });
-    const activeCats = ui.filterLogCats||[];
-    const searchQ = (ui.logSearch||'').toLowerCase().trim();
-    const sorted = [...filteredLog].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    const searched = searchQ ? sorted.filter(t=>(t.merchant||'').toLowerCase().includes(searchQ)) : sorted;
+    var stmtNames = {};
+    for (var sni = 0; sni < S.statements.length; sni++) stmtNames[S.statements[sni].id] = S.statements[sni].name;
+    var activeCats = ui.filterLogCats || [];
+    var searchQ = (ui.logSearch || '').toLowerCase().trim();
+    var sortedLog = filteredLog.slice().sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); });
+    var searched = searchQ ? sortedLog.filter(function(t) { return (t.merchant||'').toLowerCase().indexOf(searchQ) !== -1; }) : sortedLog;
+    var catCounts = {};
+    for (var cci = 0; cci < searched.length; cci++) { var cc = searched[cci].category||'Other'; catCounts[cc] = (catCounts[cc]||0)+1; }
+    var catsSorted = Object.keys(catCounts).map(function(k){return [k,catCounts[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var filtered2 = activeCats.length === 0 ? searched : searched.filter(function(t) { return activeCats.indexOf(t.category||'Other') !== -1; });
+    var visIds = filtered2.map(function(t) { return t.id; });
+    var sel = ui.selectedTxIds || [];
+    var allSel = visIds.length > 0 && visIds.every(function(id) { return sel.indexOf(id) !== -1; });
 
-    const catCounts = {};
-    searched.forEach(t=>{ const c=t.category||'Other'; catCounts[c]=(catCounts[c]||0)+1; });
-    const catsSorted = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]);
-    const filtered = activeCats.length===0 ? searched : searched.filter(t=>activeCats.includes(t.category||'Other'));
-    const visIds = filtered.map(t=>t.id);
-    const sel = ui.selectedTxIds||[];
-    const allSel = visIds.length>0 && visIds.every(id=>sel.includes(id));
+    var searchBar = '<div style="padding:10px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:8px;align-items:center"><span style="color:var(--text-muted);font-size:13px">🔍</span><input id="log-search-input" value="' + (ui.logSearch||'').replace(/"/g,'&quot;') + '" placeholder="Search…" oninput="setLogSearch(this.value)" onclick="event.stopPropagation()" style="flex:1;border:none;outline:none;font-size:13px;font-family:inherit;background:transparent;color:var(--text)">' + (ui.logSearch ? '<button onclick="setLogSearch(\'\')" style="border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:14px">✕</button>' : '') + '</div>';
 
-    const searchBar = `<div style="padding:10px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:8px;align-items:center"><span style="color:var(--text-muted);font-size:13px">🔍</span><input id="log-search-input" value="${(ui.logSearch||'').replace(/"/g,'&quot;')}" placeholder="Search…" oninput="setLogSearch(this.value)" onclick="event.stopPropagation()" style="flex:1;border:none;outline:none;font-size:13px;font-family:inherit;background:transparent;color:var(--text)">${ui.logSearch?'<button onclick="setLogSearch(\'\')" style="border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:14px">✕</button>':''}</div>`;
-    const catFilter = catsSorted.length ? `<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:5px;flex-wrap:wrap"><button onclick="S.ui.filterLogCats=[];render()" style="padding:3px 9px;border-radius:99px;border:1px solid ${activeCats.length===0?'var(--text)':'var(--border)'};background:${activeCats.length===0?'var(--text)':'transparent'};color:${activeCats.length===0?'#fff':'var(--text-secondary)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">All</button>${catsSorted.map(([c])=>{ const ci=CATS[c]||CATS['Other']; const on=activeCats.includes(c); return `<button onclick="const i=S.ui.filterLogCats.indexOf('${c}');i===-1?S.ui.filterLogCats.push('${c}'):S.ui.filterLogCats.splice(i,1);S.ui.selectedTxIds=[];render()" style="padding:3px 9px;border-radius:99px;border:1px solid ${on?ci.color:'var(--border)'};background:${on?ci.color:'transparent'};color:${on?'#fff':'var(--text-secondary)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">${ci.icon} ${c}</button>`; }).join('')}</div>` : '';
-    const bulkBar = sel.length>0 ? `<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);background:#f0f7f4;display:flex;align-items:center;gap:10px"><span style="font-size:12px;font-weight:600;color:var(--green)">${sel.length} selected</span><button onclick="toggleBulkCat(this)" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:inherit;font-weight:500">Set category ▾</button><button onclick="S.ui.selectedTxIds=[];render()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;font-family:inherit;color:var(--text-muted)">Clear</button></div>` : '';
-    const catEntries = Object.entries(CATS);
-    const rows = filtered.length ? filtered.map(t=>{
-      const isSplit=(t._split||1)<1; const eff=effectiveAmt(t);
-      const picker = catPickerHtml('log:'+t.id, t.category, cat=>`editLogTxCat('${t.id}','${cat}')`);
-      const split = splitPickerHtml('split:'+t.id, t.id, t._split);
-      const src = t._stmtId&&stmtNames[t._stmtId] ? `<span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:4px">${stmtNames[t._stmtId]}</span>` : '';
-      const isSel = sel.includes(t.id);
-      const amtHtml = isSplit
-        ? `<div style="text-align:right;line-height:1.3"><div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red);font-size:14px">−${fmtCAD(eff)}</div><div style="font-size:10px;color:var(--text-muted);text-decoration:line-through">−${fmtCAD(Math.abs(t.amount))}</div></div>`
-        : `<span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red);font-size:14px">−${fmtCAD(eff)}</span>`;
-      return `<div style="display:flex;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px;background:${isSel?'var(--bg)':'transparent'}"><div style="padding-top:1px"><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleSelectTx('${t.id}')" style="width:15px;height:15px;cursor:pointer;accent-color:var(--text)"></div><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:.01em">${t.merchant||''}</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--text-muted);font-size:11px;font-family:'DM Mono',monospace">${t.date}</span>${picker}${split}${src}</div></div><div style="flex-shrink:0;padding-top:2px">${amtHtml}</div></div>`;
-    }).join('') : `<div style="padding:40px;text-align:center"><div style="font-size:28px;margin-bottom:12px;opacity:.3">📥</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">${searchQ?'No results for "'+searchQ+'"':allLogTxs.length&&ui.filterMonth!=='All'?'No transactions this month':'No transactions imported yet'}</div><div style="font-size:12px;color:var(--text-muted)">${searchQ?'Try a different search':'Import a statement to populate this log'}</div></div>`;
-    const logTotal = filtered.filter(t=>t.type==='expense').reduce((s,t)=>s+effectiveAmt(t),0);
-    const selectAllCb = `<input type="checkbox" ${allSel?'checked':''} onclick="toggleSelectAll(${JSON.stringify(visIds)})" style="width:14px;height:14px;cursor:pointer;accent-color:var(--text)">`;
-    tabContent = `${banner}<div class="card"><div style="padding:11px 20px;border-bottom:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:10px">${selectAllCb}<span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">All Imported Transactions</span></div><span style="font-size:12px;color:var(--text-muted)">${allLogTxs.length} total</span></div>${searchBar}${catFilter}${bulkBar}<div class="stmt-scroll" style="max-height:500px;overflow-y:auto">${rows}</div>${filtered.length?`<div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ${filtered.length}</span><span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red)">−${fmtCAD(logTotal)}</span></div>`:''}</div>`;
+    var catFilter = '';
+    if (catsSorted.length) {
+      catFilter = '<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:5px;flex-wrap:wrap"><button onclick="S.ui.filterLogCats=[];render()" style="padding:3px 9px;border-radius:99px;border:1px solid ' + (activeCats.length===0?'var(--text)':'var(--border)') + ';background:' + (activeCats.length===0?'var(--text)':'transparent') + ';color:' + (activeCats.length===0?'#fff':'var(--text-secondary)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">All</button>';
+      for (var cfi = 0; cfi < catsSorted.length; cfi++) {
+        var cfcat = catsSorted[cfi][0], cfci = CATS[cfcat]||CATS['Other'], cfon = activeCats.indexOf(cfcat) !== -1;
+        catFilter += '<button onclick="var i=S.ui.filterLogCats.indexOf(\'' + cfcat + '\');i===-1?S.ui.filterLogCats.push(\'' + cfcat + '\'):S.ui.filterLogCats.splice(i,1);S.ui.selectedTxIds=[];render()" style="padding:3px 9px;border-radius:99px;border:1px solid ' + (cfon?cfci.color:'var(--border)') + ';background:' + (cfon?cfci.color:'transparent') + ';color:' + (cfon?'#fff':'var(--text-secondary)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">' + cfci.icon + ' ' + cfcat + '</button>';
+      }
+      catFilter += '</div>';
+    }
+
+    var bulkBar = sel.length > 0 ? '<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);background:#f0f7f4;display:flex;align-items:center;gap:10px"><span style="font-size:12px;font-weight:600;color:var(--green)">' + sel.length + ' selected</span><button onclick="toggleBulkCat(this)" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:inherit;font-weight:500">Set category ▾</button><button onclick="S.ui.selectedTxIds=[];render()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;font-family:inherit;color:var(--text-muted)">Clear</button></div>' : '';
+
+    var rows = '';
+    if (filtered2.length) {
+      for (var ri = 0; ri < filtered2.length; ri++) {
+        var t = filtered2[ri];
+        var isSplit = (t._split||1) < 1, eff = effectiveAmt(t);
+        var picker = catPickerHtml('log:'+t.id, t.category||'Other', function(cat){ return 'editLogTxCat(\'' + t.id + '\',\'' + cat + '\')'; });
+        // Use closure to capture t.id properly
+        picker = catPickerHtml('log:'+t.id, t.category||'Other', (function(id){ return function(cat){ return 'editLogTxCat(\'' + id + '\',\'' + cat + '\')'; }; })(t.id));
+        var split = splitPickerHtml('split:'+t.id, t.id, t._split);
+        var src = t._stmtId && stmtNames[t._stmtId] ? '<span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:4px">' + stmtNames[t._stmtId] + '</span>' : '';
+        var isSel = sel.indexOf(t.id) !== -1;
+        var amtHtml = isSplit
+          ? '<div style="text-align:right;line-height:1.3"><div style="font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red);font-size:14px">−' + fmtCAD(eff) + '</div><div style="font-size:10px;color:var(--text-muted);text-decoration:line-through">−' + fmtCAD(Math.abs(t.amount)) + '</div></div>'
+          : '<span style="font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red);font-size:14px">−' + fmtCAD(eff) + '</span>';
+        rows += '<div style="display:flex;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px;background:' + (isSel?'var(--bg)':'transparent') + '"><div style="padding-top:1px"><input type="checkbox" ' + (isSel?'checked':'') + ' onclick="event.stopPropagation();toggleSelectTx(\'' + t.id + '\')" style="width:15px;height:15px;cursor:pointer;accent-color:var(--text)"></div><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:.01em">' + (t.merchant||'') + '</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--text-muted);font-size:11px;font-family:\'DM Mono\',monospace">' + t.date + '</span>' + picker + split + src + '</div></div><div style="flex-shrink:0;padding-top:2px">' + amtHtml + '</div></div>';
+      }
+    } else {
+      rows = '<div style="padding:40px;text-align:center"><div style="font-size:28px;margin-bottom:12px;opacity:.3">📥</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">' + (searchQ?'No results for "'+searchQ+'"':allLogTxs.length&&ui.filterMonth!=='All'?'No transactions this month':'No transactions imported yet') + '</div><div style="font-size:12px;color:var(--text-muted)">' + (searchQ?'Try a different search':'Import a statement to populate this log') + '</div></div>';
+    }
+
+    var logTotal = 0;
+    for (var lti = 0; lti < filtered2.length; lti++) { if (filtered2[lti].type==='expense') logTotal += effectiveAmt(filtered2[lti]); }
+    window._visIds = visIds;
+    var selectAllCb = '<input type="checkbox" ' + (allSel?'checked':'') + ' onclick="toggleSelectAll(window._visIds)" style="width:14px;height:14px;cursor:pointer;accent-color:var(--text)">';
+    var clearLogBtn = allLogTxs.length > 0 ? '<button onclick="clearLog()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-family:inherit">Clear log</button>' : '';
+    tabContent = banner + '<div class="card"><div style="padding:11px 20px;border-bottom:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:10px">' + selectAllCb + '<span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">All Imported Transactions</span></div><div style="display:flex;align-items:center;gap:10px"><span style="font-size:12px;color:var(--text-muted)">' + allLogTxs.length + ' total</span>' + clearLogBtn + '</div></div>' + searchBar + catFilter + bulkBar + '<div class="stmt-scroll" style="max-height:500px;overflow-y:auto">' + rows + '</div>' + (filtered2.length ? '<div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ' + filtered2.length + '</span><span style="font-family:\'DM Mono\',monospace;font-weight:600;color:var(--red)">−' + fmtCAD(logTotal) + '</span></div>' : '') + '</div>';
 
   } else if (ui.subTab === 'transactions') {
-    const filtered = ui.filterCat==='All' ? allTxs : allTxs.filter(t=>t.category===ui.filterCat);
-    const byCat = {}; allTxs.forEach(t=>{ const c=t.category||'Other'; if(!byCat[c]){byCat[c]=0;} byCat[c]++; });
-    const catsSorted = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
-    const catFilter = `<div style="padding:12px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:4px">Category:</span><button onclick="setFilterCat('All')" style="padding:5px 12px;border-radius:99px;border:1px solid ${ui.filterCat==='All'?'var(--text)':'var(--border)'};background:${ui.filterCat==='All'?'var(--text)':'transparent'};color:${ui.filterCat==='All'?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">All</button>${catsSorted.map(([c])=>{ const ci=CATS[c]||CATS['Other']; const on=ui.filterCat===c; return `<button onclick="setFilterCat('${c}')" style="padding:5px 12px;border-radius:99px;border:1px solid ${on?'var(--text)':'var(--border)'};background:${on?'var(--text)':'transparent'};color:${on?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">${ci.icon} ${c}</button>`; }).join('')}</div>`;
-    const rows = filtered.map((t,i)=>{
-      const txIdx = allTxs.indexOf(t);
-      const picker = catPickerHtml('stmt:'+txIdx, t.category, cat=>`editStmtTxCat('${stmt.id}',${txIdx},'${cat}')`);
-      return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:.01em">${t.description}</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--text-muted);font-size:11px;font-family:'DM Mono',monospace">${t.date}</span>${picker}</div></div><div style="flex-shrink:0;padding-top:2px;font-family:'DM Mono',monospace;font-weight:700;color:var(--red);font-size:14px;white-space:nowrap">−${fmtCAD(t.amount)}</div></div>`;
-    }).join('');
-    tabContent = `<div class="card">${catFilter}<div class="stmt-scroll" style="max-height:500px;overflow-y:auto">${rows||'<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No transactions</div>'}</div><div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ${filtered.length} of ${allTxs.length}</span><span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red)">−${fmtCAD(filtered.reduce((s,t)=>s+t.amount,0))}</span></div></div>`;
+    var filteredTxs = ui.filterCat==='All' ? allTxs : allTxs.filter(function(t) { return t.category===ui.filterCat; });
+    var byCat2 = {};
+    for (var bc2i = 0; bc2i < allTxs.length; bc2i++) { var bc2c = allTxs[bc2i].category||'Other'; byCat2[bc2c] = (byCat2[bc2c]||0)+1; }
+    var catsSorted2 = Object.keys(byCat2).map(function(k){return[k,byCat2[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var catFilterBtns = '<button onclick="setFilterCat(\'All\')" style="padding:5px 12px;border-radius:99px;border:1px solid ' + (ui.filterCat==='All'?'var(--text)':'var(--border)') + ';background:' + (ui.filterCat==='All'?'var(--text)':'transparent') + ';color:' + (ui.filterCat==='All'?'#fff':'var(--text-secondary)') + ';font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">All</button>';
+    for (var cf2i = 0; cf2i < catsSorted2.length; cf2i++) {
+      var cf2cat = catsSorted2[cf2i][0], cf2ci = CATS[cf2cat]||CATS['Other'], cf2on = ui.filterCat===cf2cat;
+      catFilterBtns += '<button onclick="setFilterCat(\'' + cf2cat + '\')" style="padding:5px 12px;border-radius:99px;border:1px solid ' + (cf2on?'var(--text)':'var(--border)') + ';background:' + (cf2on?'var(--text)':'transparent') + ';color:' + (cf2on?'#fff':'var(--text-secondary)') + ';font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">' + cf2ci.icon + ' ' + cf2cat + '</button>';
+    }
+    var txRows = '';
+    for (var tri = 0; tri < filteredTxs.length; tri++) {
+      var tt = filteredTxs[tri], ttIdx = allTxs.indexOf(tt);
+      var ttPicker = catPickerHtml('stmt:'+ttIdx, tt.category||'Other', (function(stmtId, idx){ return function(cat){ return 'editStmtTxCat(\'' + stmtId + '\',' + idx + ',\'' + cat + '\')'; }; })(stmt.id, ttIdx));
+      txRows += '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:.01em">' + tt.description + '</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--text-muted);font-size:11px;font-family:\'DM Mono\',monospace">' + tt.date + '</span>' + ttPicker + '</div></div><div style="flex-shrink:0;padding-top:2px;font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red);font-size:14px;white-space:nowrap">−' + fmtCAD(tt.amount) + '</div></div>';
+    }
+    var stmtTotal = 0; for (var sti2 = 0; sti2 < filteredTxs.length; sti2++) stmtTotal += filteredTxs[sti2].amount;
+    tabContent = '<div class="card"><div style="padding:12px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:4px">Category:</span>' + catFilterBtns + '</div><div class="stmt-scroll" style="max-height:500px;overflow-y:auto">' + (txRows||'<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No transactions</div>') + '</div><div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ' + filteredTxs.length + ' of ' + allTxs.length + '</span><span style="font-family:\'DM Mono\',monospace;font-weight:600;color:var(--red)">−' + fmtCAD(stmtTotal) + '</span></div></div>';
   }
 
-  const main = `<div style="flex:1;min-width:0">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-      <div><div style="font-size:16px;font-weight:600">${stmt.name}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${new Date(stmt.uploadedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'})} · ${stmt.transactions.length} transactions</div></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${importBtn}${deleteSection}</div>
-    </div>
-    ${tabBar}${monthBar}${tabContent}
-  </div>`;
-
-  return `<div style="margin-bottom:28px"><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Statement Analyzer</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">Upload a CSV export · instant categorization, no API key needed</div></div><div style="display:flex;gap:24px;align-items:flex-start">${sidebar}${main}</div>`;
+  return '<div style="margin-bottom:28px"><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Statement Analyzer</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">Upload a CSV export · instant categorization, no API key needed</div></div><div style="display:flex;gap:24px;align-items:flex-start">' + sidebar + '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px"><div><div style="font-size:16px;font-weight:600">' + stmt.name + '</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">' + new Date(stmt.uploadedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'}) + ' · ' + stmt.transactions.length + ' transactions</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + importBtn + deleteSection + '</div></div>' + tabBar + monthBar + tabContent + '</div></div>';
 }
 
-window.addEventListener('DOMContentLoaded', () => { render(); });
-</script>
-</body></html>
+// Expose functions to global scope
+window.openBankHelp = openBankHelp;
+window.closeBankHelp = closeBankHelp;
+window.closeMapModal = closeMapModal;
+window.applyManualMapping = applyManualMapping;
+window.processFiles = processFiles;
+window.setActive = setActive;
+window.newUpload = newUpload;
+window.setSubTab = setSubTab;
+window.setFilterCat = setFilterCat;
+window.setFilterMonth = setFilterMonth;
+window.deleteStatement = deleteStatement;
+window.cancelDelete = cancelDelete;
+window.importStatement = importStatement;
+window.clearLog = clearLog;
+window.toggleCatPicker = toggleCatPicker;
+window.editStmtTxCat = editStmtTxCat;
+window.editLogTxCat = editLogTxCat;
+window.addCustomCat = addCustomCat;
+window.deleteCustomCat = deleteCustomCat;
+window.toggleSplit = toggleSplit;
+window.setLogTxSplit = setLogTxSplit;
+window.toggleSelectTx = toggleSelectTx;
+window.toggleSelectAll = toggleSelectAll;
+window.bulkSetCat = bulkSetCat;
+window.toggleBulkCat = toggleBulkCat;
+window.setLogSearch = setLogSearch;
+window.render = render;
+window.S = S;
+
+window.addEventListener('DOMContentLoaded', function() { render(); });
+</script></body></html>
