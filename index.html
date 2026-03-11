@@ -1,1177 +1,608 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Statement Analyzer · finflow</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #f5f5f3;
-    --surface: #ffffff;
-    --border: #e8e8e6;
-    --border-light: #f0f0ee;
-    --text: #1a1a1a;
-    --text-secondary: #6b6b6b;
-    --text-muted: #a8a8a8;
-    --green: #2d6a4f;
-    --green-bg: #f0f7f4;
-    --red: #c0392b;
-    --red-bg: #fdf3f2;
-    --radius: 18px;
-    --radius-sm: 11px;
-    --shadow: 0 1px 4px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03);
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f5f3;--surface:#ffffff;--border:#e8e8e6;--border-light:#f0f0ee;--text:#1a1a1a;--text-secondary:#6b6b6b;--text-muted:#a8a8a8;--green:#2d6a4f;--green-bg:#f0f7f4;--red:#c0392b;--red-bg:#fdf3f2;--radius:18px;--radius-sm:11px;--shadow:0 1px 4px rgba(0,0,0,0.05),0 1px 2px rgba(0,0,0,0.03);--shadow-md:0 4px 16px rgba(0,0,0,0.06),0 2px 4px rgba(0,0,0,0.03)}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.28);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:22px;padding:28px;width:100%;max-width:480px;box-shadow:0 24px 60px rgba(0,0,0,0.11);margin:16px}
+.modal-title{font-size:17px;font-weight:600;margin-bottom:16px;letter-spacing:-.02em}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:inherit}
+.btn-dark{background:var(--text);color:#fff}.btn-dark:hover{background:#2d2d2d}
+.btn-ghost{background:transparent;color:var(--text-secondary);border:1px solid var(--border)}.btn-ghost:hover{border-color:var(--text-secondary);color:var(--text)}
+.tab-bar{display:flex;gap:2px;background:var(--border-light);border-radius:12px;padding:3px;width:fit-content}
+.tab-btn{padding:7px 16px;border-radius:9px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;border:none;background:none;font-family:inherit;transition:all .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-weight:600}
+.card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.input{width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .15s,box-shadow .15s}
+.input:focus{border-color:var(--text);box-shadow:0 0 0 3px rgba(26,26,26,0.07)}
+.form-label{font-size:12px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;display:block}
+.status-badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:500}
+.status-badge.green{background:var(--green-bg);color:var(--green)}
+.status-badge.red{background:var(--red-bg);color:var(--red)}
+.sa-nav{background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:0;z-index:100}
+.sa-nav-inner{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;height:56px;gap:10px}
+.sa-wrap{max-width:1100px;margin:0 auto;padding:32px 32px 60px}
+@media(max-width:768px){.sa-wrap{padding:20px 16px 60px}.sa-nav-inner{padding:0 16px}}
+</style></head><body>
 
-  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
-  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-  .app { display: flex; flex-direction: column; min-height: 100vh; }
+<div class="sa-nav">
+  <div class="sa-nav-inner">
+    <span style="font-size:15px;font-weight:600;letter-spacing:-.02em">finflow</span>
+    <span style="font-size:11px;color:var(--text-muted);font-family:'DM Mono',monospace">· statement analyzer</span>
+    <button onclick="openBankHelp()" style="margin-left:auto;background:transparent;border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--text-secondary)">? How to export CSV</button>
+  </div>
+</div>
 
-  /* ── Top nav — frosted glass ── */
-  .topnav { background: rgba(255,255,255,0.88); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 100; }
-  .topnav-inner { max-width: 960px; margin: 0 auto; padding: 0 32px; display: flex; align-items: center; height: 56px; }
-  .logo { display: flex; align-items: baseline; gap: 10px; margin-right: 32px; flex-shrink: 0; }
-  .logo-name { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
-  .logo-sub { font-size: 11px; color: var(--text-muted); font-family: 'DM Mono', monospace; }
-  .nav-tabs { display: flex; }
-  .nav-item { padding: 0 18px; height: 56px; display: flex; align-items: center; font-size: 13.5px; font-weight: 500; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: inherit; border-bottom: 2px solid transparent; transition: color 0.15s; white-space: nowrap; }
-  .nav-item:hover { color: var(--text); }
-  .nav-item.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
-  .topnav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-  .sidebar-footer-label { font-size: 11px; color: var(--text-muted); font-family: 'DM Mono', monospace; }
-  .sidebar-footer-val { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-
-  .main { flex: 1; padding: 40px 32px; max-width: 960px; margin: 0 auto; width: 100%; }
-
-  /* Cards */
-  .card { background: var(--surface); border-radius: var(--radius); border: none; box-shadow: var(--shadow); padding: 24px; overflow: hidden; }
-  .card-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 16px; }
-
-  /* Value flash — 200ms on update */
-  @keyframes valFlash { from { opacity: 0.4; transform: translateY(1px); } to { opacity: 1; transform: translateY(0); } }
-  .val-flash { animation: valFlash 200ms ease forwards; }
-
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .nw-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
-  .nw-value { font-size: 44px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
-  .nw-meta { font-size: 13px; color: var(--text-muted); margin-top: 10px; }
-
-  /* Account rows — space separated, no heavy borders */
-  .acct-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
-  .acct-row + .acct-row { border-top: 1px solid var(--border-light); }
-  .acct-dot { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .acct-info { flex: 1; }
-  .acct-name { font-size: 13.5px; font-weight: 500; }
-  .acct-inst { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-  .acct-bal { font-family: 'DM Mono', monospace; font-size: 13.5px; font-weight: 500; cursor: pointer; }
-  .bar-track { height: 3px; background: var(--border-light); border-radius: 99px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s; }
-
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-
-  /* Info button */
-  .info-btn { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 99px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-family: inherit; transition: all 0.15s; }
-  .info-btn:hover { border-color: var(--text-secondary); color: var(--text); }
-  .info-dot { width: 16px; height: 16px; border-radius: 99px; background: var(--text); color: white; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-
-  /* Pill tab bar */
-  .tab-bar { display: flex; gap: 2px; background: var(--border-light); border-radius: 12px; padding: 3px; width: fit-content; }
-  .tab-btn { padding: 7px 16px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: inherit; transition: all 0.15s; white-space: nowrap; }
-  .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }
-
-  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; }
-  .page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
-  .page-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-
-  /* Buttons */
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; font-family: inherit; }
-  .btn-dark { background: var(--text); color: #fff; }
-  .btn-dark:hover { background: #2d2d2d; }
-  .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
-  .btn-ghost:hover { border-color: var(--text-secondary); color: var(--text); }
-  /* Low-emphasis text button — e.g. "+ Add" inside card headers */
-  .btn-text { background: transparent; border: none; color: var(--text-secondary); font-weight: 500; font-size: 13px; cursor: pointer; font-family: inherit; padding: 0; transition: color 0.15s; letter-spacing: -0.01em; }
-  .btn-text:hover { color: var(--text); }
-
-  /* Inputs */
-  .input { width: 100%; min-width: 0; padding: 10px 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 16px; font-family: inherit; color: var(--text); background: var(--surface); outline: none; transition: border-color 0.15s, box-shadow 0.15s; box-sizing: border-box; }
-  input[type="date"].input { -webkit-appearance: none; appearance: none; }
-  .input:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgba(26,26,26,0.07); }
-  .input-mono { font-family: 'DM Mono', monospace; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-  .form-group { display: flex; flex-direction: column; gap: 5px; }
-  .form-group.full { grid-column: 1 / -1; }
-  .form-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-
-  /* Savings target input — proper field with inline $ prefix */
-  .target-field-wrap { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s; height: 44px; }
-  .target-field-wrap:focus-within { border-color: var(--text); box-shadow: 0 0 0 3px rgba(26,26,26,0.07); }
-  .target-field-prefix { display: flex; align-items: center; padding: 0 4px 0 13px; font-family: 'DM Mono', monospace; font-size: 14px; color: var(--text-muted); flex-shrink: 0; }
-  .target-field-input { border: none; outline: none; background: transparent; font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; padding: 0 12px 0 4px; }
-  .target-field-input::placeholder { color: var(--text-muted); font-weight: 400; }
-
-  /* Modals */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.28); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(6px); }
-  .modal-overlay.open { display: flex; }
-  .modal { background: var(--surface); border-radius: 22px; padding: 28px; width: 100%; max-width: 440px; box-shadow: 0 24px 60px rgba(0,0,0,0.11); margin: 16px; }
-  .modal-title { font-size: 17px; font-weight: 600; margin-bottom: 20px; letter-spacing: -0.02em; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-
-  .info-modal { max-width: 600px; max-height: 88vh; overflow-y: auto; }
-  .info-section { margin-bottom: 24px; }
-  .info-section:last-child { margin-bottom: 0; }
-  .info-section-title { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-light); }
-  .info-row { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; gap: 16px; }
-  .info-row:last-child { border-bottom: none; }
-  .info-row-label { color: var(--text-secondary); flex: 1; }
-  .info-row-val { font-family: 'DM Mono', monospace; font-weight: 500; color: var(--text); text-align: right; flex-shrink: 0; }
-  .info-callout { background: var(--green-bg); border: 1px solid #c8ddd6; border-radius: var(--radius-sm); padding: 12px 14px; font-size: 12px; color: var(--green); line-height: 1.6; margin-top: 12px; }
-  .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 500; }
-
-  .pc-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }
-  .pc-row:last-child { border-bottom: none; }
-  .pc-row.total { border-top: 1px solid var(--border); border-bottom: none; padding-top: 12px; margin-top: 4px; font-weight: 700; font-size: 14px; }
-  .alloc-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border-light); }
-  .alloc-row:last-child { border-bottom: none; }
-  .tx-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border-light); }
-  .tx-row { display: flex; align-items: center; gap: 12px; padding: 11px 20px; border-bottom: 1px solid var(--bg); font-size: 13px; }
-  .tx-row:last-child { border-bottom: none; }
-
-  .del-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; opacity: 0.5; transition: opacity 0.15s; }
-  .del-btn:hover { opacity: 1; color: var(--red); }
-  .inline-input { border: none; border-bottom: 1.5px solid var(--text); outline: none; font-family: 'DM Mono', monospace; font-size: 14px; padding: 2px 4px; background: transparent; width: 100px; color: var(--text); }
-
-  .empty-state { text-align: center; padding: 36px 20px; }
-  .empty-icon { font-size: 28px; color: var(--text-muted); margin-bottom: 10px; opacity: 0.3; }
-  .empty-title { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
-  .empty-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; }
-
-  .nw-delta-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
-  .nw-delta-row:last-child { border-bottom: none; }
-  .toggle input { opacity: 0; width: 0; height: 0; }
-  .toggle-track { position: absolute; inset: 0; background: var(--border); border-radius: 99px; transition: background 0.2s; }
-  .toggle input:checked + .toggle-track { background: var(--text); }
-  .toggle-thumb { position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; background: white; border-radius: 99px; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-  .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
-
-  .trend-chart { position: relative; height: 80px; display: flex; align-items: flex-end; gap: 4px; padding: 8px 0 0; }
-  .trend-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-  .trend-bar { width: 100%; border-radius: 4px 4px 0 0; transition: height 0.5s cubic-bezier(.34,1.56,.64,1); min-height: 4px; cursor: pointer; }
-  .trend-bar:hover { filter: brightness(0.92); }
-
-  .strategy-metric { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
-  .strategy-metric-label { font-size: 9px; color: var(--text-muted); margin-bottom: 3px; font-weight: 500; }
-  .strategy-metric-val { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 700; }
-  .strategy-metric-sub { font-size: 9px; color: var(--text-muted); margin-top: 1px; }
-
-  .promo-ring { display: inline-flex; align-items: center; justify-content: center; flex-direction: column; width: 64px; height: 64px; border-radius: 50%; font-family: 'DM Mono', monospace; flex-shrink: 0; }
-  .liquidity-impact-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border-light); font-size: 12px; }
-  .liquidity-impact-row:last-child { border-bottom: none; }
-
-  /* ── Budget range slider — neutral, no category color ── */
-  .budget-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 3px; background: var(--border-light); border-radius: 99px; cursor: pointer; outline: none; accent-color: var(--text-secondary); display: block; margin: 0; }
-  .budget-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--text); cursor: pointer; border: 2px solid var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
-  .budget-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--text); cursor: pointer; border: 2px solid var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
-
-  /* ── Collapsible sections ── */
-  .collapse-row { display: flex; align-items: center; justify-content: space-between; padding: 15px 0; cursor: pointer; user-select: none; border: none; background: none; width: 100%; font-family: inherit; text-align: left; transition: opacity .12s; }
-  .collapse-row:hover { opacity: .72; }
-  .collapse-chevron { font-size: 9px; color: var(--text-muted); transition: transform .22s ease; flex-shrink: 0; line-height: 1; display: inline-block; }
-  .collapse-chevron.open { transform: rotate(180deg); }
-  .collapse-body { overflow: hidden; max-height: 0; transition: max-height .32s cubic-bezier(.4,0,.2,1); }
-  .collapse-body.open { max-height: 5000px; }
-
-  /* Status badge */
-  .status-badge { display: inline-block; padding: 3px 9px; border-radius: 99px; font-size: 10px; font-weight: 500; flex-shrink: 0; }
-  .status-badge.green { background: var(--green-bg); color: var(--green); }
-  .status-badge.amber { background: #fdf6ec; color: #92600a; }
-  .status-badge.red   { background: var(--red-bg); color: var(--red); }
-  .status-badge.gray  { background: var(--border-light); color: var(--text-muted); }
-
-  .section-label { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 14px; }
-  .expand-link { font-size: 12px; color: var(--text-muted); cursor: pointer; border: none; background: none; font-family: inherit; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
-  .expand-link:hover { color: var(--text); }
-
-  /* ── Mobile ── */
-  @media (max-width: 768px) {
-    body, html { overflow-x: hidden; }
-    .sidebar { display: none; }
-    .topnav { display: none; }
-    .mobile-nav { display: flex !important; }
-    .main { margin-left: 0; padding: 24px 16px 96px; max-width: 100vw; overflow-x: hidden; box-sizing: border-box; }
-    .card { padding: 18px; }
-    .topnav-right { display: none; }
-    .form-row { grid-template-columns: 1fr; }
-    .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; width: 100%; }
-    .tab-btn { padding: 6px 10px; font-size: 11px; }
-    .topbar { flex-wrap: wrap; gap: 8px; }
-    .grid-2 { grid-template-columns: 1fr; }
-    .page-header { flex-wrap: wrap; gap: 8px; }
-    [style*="font-size:40px"] { font-size: 26px !important; }
-    .nw-3col { grid-template-columns: 1fr 1fr 1fr !important; gap: 6px !important; }
-    .nw-3col > div { padding: 10px 8px !important; border-right-width: 1px !important; }
-    .nw-3col [style*="font-size:18px"], .nw-3col [style*="font-size:16px"] { font-size: 13px !important; }
-    .nw-3col [style*="font-size:11px"], .nw-3col [style*="font-size:10px"], .nw-3col [style*="font-size:9px"] { font-size: 9px !important; }
-    details > div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
-    div[style*="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"] { grid-template-columns: 1fr !important; }
-    div[style*="grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px"] { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-    #forecast-canvas { touch-action: pan-y; }
-    #fc-breakdown .card { overflow-x: auto; }
-    [style*="grid-template-columns:repeat(4,1fr)"] { grid-template-columns: 1fr 1fr !important; }
-    [style*="width:180px"][style*="height:180px"] { width: 130px !important; height: 130px !important; }
-    div[style*="grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px"] { grid-template-columns: 1fr !important; }
-    .acct-bal { font-size: 12px !important; }
-    .acct-name { font-size: 13px !important; }
-    .acct-inst { font-size: 10px !important; }
-    input, select, textarea { max-width: 100%; min-width: 0; box-sizing: border-box; }
-    input[type="date"] { min-width: 0; max-width: 100%; width: 100% !important; }
-  }
-
-  /* ── Premium frosted-glass mobile nav ── */
-  .mobile-nav {
-    display: none;
-    position: fixed; bottom: 0; left: 0; right: 0;
-    height: 76px;
-    background: rgba(250,250,248,0.92);
-    backdrop-filter: saturate(180%) blur(24px);
-    -webkit-backdrop-filter: saturate(180%) blur(24px);
-    border-top: 1px solid rgba(0,0,0,0.06);
-    box-shadow: 0 -1px 0 rgba(0,0,0,0.04);
-    z-index: 200;
-    padding: 0 8px;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .mobile-nav-item {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 5px; font-size: 10px; font-weight: 500; color: var(--text-muted);
-    cursor: pointer; border: none; background: none; font-family: inherit;
-    padding: 10px 4px 8px; border-radius: 14px; transition: color 0.15s; letter-spacing: 0.01em;
-  }
-  .mobile-nav-item.active { color: var(--text); font-weight: 600; }
-  .mobile-nav-item .mn-icon {
-    font-size: 22px; line-height: 1; transition: opacity 0.15s, transform 0.15s;
-    display: block;
-  }
-  .mobile-nav-item:not(.active) .mn-icon { opacity: 0.32; }
-  .mobile-nav-item.active .mn-icon { opacity: 1; }
-  /* Active dot indicator */
-  .mobile-nav-item.active::after {
-    content: '';
-    display: block;
-    position: absolute;
-    bottom: 10px;
-    width: 4px; height: 4px;
-    border-radius: 50%;
-    background: var(--text);
-    opacity: 0.25;
-  }
-
-  /* ── Value transitions ── */
-  .val-update { animation: valFlash 200ms ease forwards; }
-
-  /* ── Surplus context note ── */
-  .surplus-note {
-    font-size: 11px; color: var(--text-muted); margin-top: 8px;
-    font-style: italic; letter-spacing: 0;
-  }
-
-  /* ── Section spacing ── */
-  .section-gap { margin-bottom: 18px; }
-
-  /* ── Budget slider — thinner, quieter ── */
-  .budget-slider-wrap { padding: 4px 0 8px; }
-
-  /* ── Inline add button (text style, no fill) ── */
-  .btn-inline-add {
-    background: none; border: none; color: var(--text-secondary);
-    font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
-    padding: 0; letter-spacing: -0.01em; transition: color 0.15s;
-  }
-  .btn-inline-add:hover { color: var(--text); }
-
-  /* ── Currency number shimmer on update ── */
-  .num-cell { transition: color 0.2s; }
-#tab-content{margin-top:32px}.sa-wrap{max-width:1100px;margin:0 auto;padding:0 32px 60px}.sa-nav{background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:0;z-index:100}.sa-nav-inner{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;height:56px;gap:10px}</style></head><body><div class="sa-nav"><div class="sa-nav-inner"><span style="font-size:15px;font-weight:600;letter-spacing:-.02em">finflow</span><span style="font-size:11px;color:var(--text-muted);font-family:DM Mono,monospace">· statement analyzer</span><button onclick="toggleSettings()" style="margin-left:auto;background:transparent;border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--text-secondary);display:flex;align-items:center;gap:5px;transition:all .15s">⚙ API Key</button></div></div>
-
-<div id="settings-modal" class="modal-overlay" onclick="if(event.target===this)toggleSettings()">
-  <div class="modal" style="max-width:400px">
-    <div class="modal-title">Anthropic API Key</div>
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.6">Your key is saved locally in your browser and never sent anywhere except directly to Anthropic. Get yours at <a href="https://console.anthropic.com" target="_blank" style="color:var(--text)">console.anthropic.com</a>.</p>
-    <div class="form-group">
-      <label class="form-label">API Key</label>
-      <input id="api-key-input" type="password" class="input input-mono" placeholder="sk-ant-..." style="font-size:13px">
+<!-- Bank Help Modal -->
+<div id="bank-help-modal" class="modal-overlay" onclick="if(event.target===this)closeBankHelp()">
+  <div class="modal" style="max-width:520px;max-height:88vh;overflow-y:auto">
+    <div class="modal-title">How to export a CSV from your bank</div>
+    <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">TD Bank</strong>Accounts → select account → Download → choose CSV → select date range</div>
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">RBC</strong>My Accounts → select account → Download Transactions → CSV format</div>
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">Scotiabank</strong>Accounts → Activity → Export → CSV</div>
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">CIBC</strong>Account Details → Download → CSV</div>
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">BMO</strong>Account Activity → Download Transactions → CSV</div>
+      <div><strong style="color:var(--text);display:block;margin-bottom:2px">Amex Canada</strong>Statements & Activity → Download → CSV</div>
+      <div style="background:var(--bg);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--text-muted)">💡 The app auto-detects the column layout so most Canadian bank CSV formats work out of the box.</div>
     </div>
+    <div class="modal-actions"><button onclick="closeBankHelp()" class="btn btn-dark">Got it</button></div>
+  </div>
+</div>
+
+<!-- Mapping Modal -->
+<div id="map-modal" class="modal-overlay" onclick="if(event.target===this)closeMapModal()">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title">Map your CSV columns</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">We couldn't auto-detect your bank's format. Tell us which columns contain each field.</p>
+    <div id="map-modal-body"></div>
     <div class="modal-actions">
-      <button onclick="toggleSettings()" class="btn btn-ghost">Cancel</button>
-      <button onclick="saveApiKey()" class="btn btn-dark">Save Key</button>
+      <button onclick="closeMapModal()" class="btn btn-ghost">Cancel</button>
+      <button onclick="applyManualMapping()" class="btn btn-dark">Import</button>
     </div>
   </div>
-</div><div class="sa-wrap"><div id="tab-content"></div></div><script>
-const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+</div>
 
-// ─── API Key Settings ─────────────────────────────────────────────────────────
-function toggleSettings() {
-  const modal = document.getElementById('settings-modal');
-  if (!modal) return;
-  const isOpen = modal.classList.contains('open');
-  if (!isOpen) {
-    const inp = document.getElementById('api-key-input');
-    if (inp) { inp.value = localStorage.getItem('ff_api_key') || ''; setTimeout(()=>inp.focus(), 50); }
+<div class="sa-wrap"><div id="tab-content"></div></div>
+
+<script>
+// ── Utilities ────────────────────────────────────────────────────────────────
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+const fmt = n => Math.abs(n).toLocaleString('en-CA', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtCAD = n => (n < 0 ? '−' : '') + '$' + fmt(Math.abs(n));
+const effectiveAmt = t => Math.abs(t.amount) * (t._split || 1);
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+const S = {
+  statements: JSON.parse(localStorage.getItem('sa_statements') || '[]'),
+  transactions: JSON.parse(localStorage.getItem('sa_transactions') || '[]'),
+  ui: {
+    stage: 'upload', activeStmtId: null, subTab: 'breakdown',
+    filterCat: 'All', filterLogCats: [], filterMonth: 'All',
+    logSearch: '', selectedTxIds: [], splittingTx: null,
+    editingTx: null, catPickerRect: null, bulkCatOpen: false,
+    bulkCatRect: null, pendingDelete: null, importedCount: 0,
+    importWarning: null, addingCat: false, error: ''
   }
-  modal.classList.toggle('open', !isOpen);
-}
-function saveApiKey() {
-  const val = document.getElementById('api-key-input').value.trim();
-  if (val) { localStorage.setItem('ff_api_key', val); }
-  else { localStorage.removeItem('ff_api_key'); }
-  document.getElementById('settings-modal').classList.remove('open');
-  S.stmtUiState.error = '';
-  _renderStmtTab();
-}
-const fmt=n=>Math.abs(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtCAD=n=>(n<0?'−':'')+'$'+fmt(Math.abs(n));
-const S={statements:JSON.parse(localStorage.getItem('sa_statements')||'[]'),transactions:JSON.parse(localStorage.getItem('sa_transactions')||'[]'),stmtUiState:{stage:'upload',processing:false,error:'',filterCat:'All',filterLogCat:'All',filterLogCats:[],activeStmtId:null,stmtSubTab:'breakdown',selectedTxIds:[],logSearch:'',filterMonth:'All',splittingTx:null,editingTx:null,bulkCatOpen:false,pendingDelete:null,forceUpload:false,importedCount:0,importWarning:null,addingCat:false,bulkTotal:0,bulkDone:0,bulkErrors:[],bulkCurrentName:""}};
-function persist(){localStorage.setItem('sa_statements',JSON.stringify(S.statements));localStorage.setItem('sa_transactions',JSON.stringify(S.transactions));}
-function render(){_renderStmtTab();}
-
-// ─── Statements / CC Statement Analyzer ──────────────────────────────────────
-const STMT_CATEGORIES_DEFAULT = {
-  'Groceries':     { icon: '🛒', color: '#92600a' },
-  'Dining & Food': { icon: '🍽️', color: '#f97316' },
-  'Transport':     { icon: '🚗', color: '#10b981' },
-  'Shopping':      { icon: '🛍️', color: '#6b6b6b' },
-  'Entertainment': { icon: '🎬', color: '#8b5cf6' },
-  'Healthcare':    { icon: '💊', color: '#0ea5e9' },
-  'Gym':           { icon: '🏋️', color: '#ec4899' },
-  'Travel':        { icon: '✈️', color: '#a855f7' },
-  'Utilities':     { icon: '📱', color: '#64748b' },
-  'Subscriptions': { icon: '🔄', color: '#4a9370' },
-  'Housing':       { icon: '🏠', color: '#6366f1' },
-  'Insurance':     { icon: '🛡️', color: '#475569' },
-  'Other':         { icon: '📦', color: '#a8a8a8' },
 };
+function persist() {
+  localStorage.setItem('sa_statements', JSON.stringify(S.statements));
+  localStorage.setItem('sa_transactions', JSON.stringify(S.transactions));
+}
 
-// Custom categories stored in localStorage
+// ── Categories ────────────────────────────────────────────────────────────────
+const CATS_DEFAULT = {
+  'Groceries':     {icon:'🛒', color:'#92600a'},
+  'Dining & Food': {icon:'🍽️', color:'#f97316'},
+  'Transport':     {icon:'🚗', color:'#10b981'},
+  'Shopping':      {icon:'🛍️', color:'#6b6b6b'},
+  'Entertainment': {icon:'🎬', color:'#8b5cf6'},
+  'Healthcare':    {icon:'💊', color:'#0ea5e9'},
+  'Gym':           {icon:'🏋️', color:'#ec4899'},
+  'Travel':        {icon:'✈️', color:'#a855f7'},
+  'Utilities':     {icon:'📱', color:'#64748b'},
+  'Subscriptions': {icon:'🔄', color:'#4a9370'},
+  'Housing':       {icon:'🏠', color:'#6366f1'},
+  'Insurance':     {icon:'🛡️', color:'#475569'},
+  'Other':         {icon:'📦', color:'#a8a8a8'},
+};
 const CUSTOM_CAT_KEY = 'ff_custom_categories';
-function loadCustomCats() {
-  try { return JSON.parse(localStorage.getItem(CUSTOM_CAT_KEY) || '{}'); } catch(e) { return {}; }
-}
-function saveCustomCats(cats) {
-  localStorage.setItem(CUSTOM_CAT_KEY, JSON.stringify(cats));
-}
+const loadCustomCats = () => { try { return JSON.parse(localStorage.getItem(CUSTOM_CAT_KEY)||'{}'); } catch(e) { return {}; } };
+const saveCustomCats = c => localStorage.setItem(CUSTOM_CAT_KEY, JSON.stringify(c));
+let CATS = {...CATS_DEFAULT, ...loadCustomCats()};
+function refreshCats() { CATS = {...CATS_DEFAULT, ...loadCustomCats()}; }
 
-// Live merged category map — always use this instead of the static object
-let STMT_CATEGORIES = { ...STMT_CATEGORIES_DEFAULT, ...loadCustomCats() };
-
-function refreshStmtCategories() {
-  const custom = loadCustomCats();
-  Object.keys(STMT_CATEGORIES_DEFAULT).forEach(k => { if (STMT_CATEGORIES[k]) delete STMT_CATEGORIES[k]; });
-  Object.assign(STMT_CATEGORIES, STMT_CATEGORIES_DEFAULT, custom);
-}
-
-// Add a new custom category
-function stmtAddCustomCategory(name, icon, color) {
-  name = name.trim();
-  if (!name) return;
-  const custom = loadCustomCats();
-  custom[name] = { icon: icon || '🏷️', color: color || '#94a3b8', custom: true };
-  saveCustomCats(custom);
-  refreshStmtCategories();
-  S.stmtUiState.addingCat = false;
-  S.stmtUiState.editingTx = null;
-  _renderStmtTab();
+// ── Keyword-based auto-categorizer ────────────────────────────────────────────
+const RULES = [
+  ['Groceries',     /loblaws|metro|sobeys|fortinos|food basic|no frills|real canadian|superstore|walmart|costco|iga|maxi|provigo|farm boy|whole food|trader joe|grocery|supermarché/i],
+  ['Dining & Food', /mcdonald|tim horton|starbucks|subway|a&w|harveys|wendy|burger king|pizza|sushi|ramen|pho|restaurant|café|cafe|bar |bistro|grill|kitchen|diner|eatery|doordash|uber eat|skip|instacart|grubhub|deliveroo/i],
+  ['Transport',     /uber(?!.*eat)|lyft|taxi|via rail|go transit|ttc|stm|octopus|presto|parking|impark|green p|shell|esso|petro|husky|sunoco|canadian tire gas|fuel|airbnb|hertz|enterprise|budget car|uhaul/i],
+  ['Travel',        /air canada|westjet|porter|sunwing|expedia|booking\.com|hotels\.com|marriott|hilton|hyatt|sheraton|delta hotel|best western|airbnb|vacation|resort|cruise/i],
+  ['Shopping',      /amazon|shopify|etsy|ebay|best buy|the bay|hudson|winners|homesense|marshalls|h&m|zara|gap|old navy|banana republic|nordstrom|simons|roots|indigo|chapters|sport chek|atmosphere/i],
+  ['Entertainment', /netflix|spotify|apple.*tv|disney\+|crave|amazon.*prime|hbo|youtube.*premium|cinema|cineplex|imax|theatre|theater|concert|ticketmaster|eventbrite|steam|playstation|xbox|nintendo/i],
+  ['Subscriptions', /google.*one|icloud|dropbox|microsoft 365|office 365|adobe|notion|1password|lastpass|duolingo|headspace|calm|audible/i],
+  ['Healthcare',    /shoppers drug|rexall|pharma|clinic|hospital|dental|optom|vision|physio|chiro|massage|lab |lifelabs|dynacare|pharmacy|medical|health/i],
+  ['Gym',           /goodlife|anytime fitness|ymca|planet fitness|equinox|orangetheory|crossfit|spin|yoga|pilates|gym|fitness|lululemon|nike|adidas/i],
+  ['Utilities',     /rogers|bell|telus|fido|koodo|virgin mobile|wind|shaw|cogeco|hydro|enbridge|union gas|alectra|toronto hydro|hydro one|internet|wireless/i],
+  ['Housing',       /rent|lease|mortgage|property tax|condo fee|maintenance|rona|home depot|canadian tire(?!.*gas)|ikea|wayfair|structube|article|cb2/i],
+  ['Insurance',     /intact|td insurance|rbc insurance|sun life|manulife|great-west|desjardins.*assur|insurance|assurance/i],
+];
+function autoCategory(desc) {
+  const d = (desc || '').toLowerCase();
+  for (const [cat, re] of RULES) { if (re.test(d)) return cat; }
+  return 'Other';
 }
 
-function stmtDeleteCustomCategory(name) {
-  const custom = loadCustomCats();
-  delete custom[name];
-  saveCustomCats(custom);
-  refreshStmtCategories();
-  _renderStmtTab();
+// ── CSV Parser ────────────────────────────────────────────────────────────────
+// Returns {headers, rows} where rows are arrays of strings
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const parse = line => {
+    const res = []; let cur = ''; let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { res.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    res.push(cur.trim());
+    return res;
+  };
+  const headers = parse(lines[0]);
+  const rows = lines.slice(1).filter(l => l.trim()).map(parse);
+  return {headers, rows};
 }
 
-const STMT_AI_PROMPT = `You are a financial data extractor for a Canadian user. Extract ALL expense transactions from the credit card statement.
+// Try to detect columns automatically
+function detectColumns(headers) {
+  const h = headers.map(x => x.toLowerCase());
+  const find = (...terms) => h.findIndex(x => terms.some(t => x.includes(t)));
 
-Return ONLY a JSON array with no markdown, no backticks, no explanation:
-[{"date":"2024-01-15","description":"MERCHANT NAME","amount":25.99,"category":"Dining & Food"}]
+  const date  = find('date', 'posted', 'trans date', 'transaction date');
+  const desc  = find('description', 'merchant', 'payee', 'details', 'memo', 'name', 'narrative');
+  const debit = find('debit', 'amount debit', 'withdrawal', 'charge', 'spend');
+  const credit= find('credit', 'amount credit', 'payment', 'deposit');
+  const amt   = find('amount', 'transaction amount', 'amt');
 
-Categories: "Groceries","Dining & Food","Transport","Shopping","Entertainment","Healthcare","Travel","Utilities","Subscriptions","Housing","Insurance","Other"
+  if (date === -1 || desc === -1) return null;
+  if (debit === -1 && credit === -1 && amt === -1) return null;
+  return {date, desc, debit, credit, amt};
+}
 
-Rules:
-- amount is always a positive number
-- Skip payments, credits, refunds, and balance transfers
-- Extract every single charge/purchase
-- Infer category from merchant name
-- Use Canadian date format YYYY-MM-DD`;
+function rowsToTransactions(headers, rows, mapping) {
+  const {date: di, desc: dsc, debit: deb, credit: crd, amt: amti} = mapping;
+  const txs = [];
+  for (const row of rows) {
+    const dateRaw = (row[di]||'').trim();
+    const descRaw = (row[dsc]||'').trim();
+    if (!dateRaw || !descRaw) continue;
 
-async function stmtProcessFile(file) {
-  const ui = S.stmtUiState;
-  ui.stage = 'processing';
-  ui.error = '';
-  ui.forceUpload = false;
-  ui.processing = true;
-  _renderStmtTab();
+    // Normalise date → YYYY-MM-DD
+    let date = dateRaw;
+    const m1 = dateRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    const m2 = dateRaw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    const m3 = dateRaw.match(/^(\w{3})\s+(\d{1,2}),?\s+(\d{4})$/i);
+    if (m2) { date = `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`; }
+    else if (m1) { const yr = m1[3].length===2?'20'+m1[3]:m1[3]; date = `${yr}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`; }
+    else if (m3) { const months={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'}; date=`${m3[3]}-${months[m3[1].toLowerCase()]||'01'}-${m3[2].padStart(2,'0')}`; }
 
-  try {
-    const base64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result.split(',')[1]);
-      r.onerror = rej;
-      r.readAsDataURL(file);
+    let amount = 0;
+    if (deb !== -1 && crd !== -1) {
+      // Separate debit/credit columns
+      const d = parseFloat((row[deb]||'').replace(/[$,\s]/g,''));
+      const c = parseFloat((row[crd]||'').replace(/[$,\s]/g,''));
+      if (!isNaN(d) && d > 0) amount = d;        // debit = expense
+      else if (!isNaN(c) && c > 0) amount = -c;  // credit = payment, skip
+    } else if (amti !== -1) {
+      const v = parseFloat((row[amti]||'').replace(/[$,\s]/g,''));
+      if (!isNaN(v)) amount = v > 0 ? v : -v; // treat positive as expense
+    }
+
+    if (amount <= 0) continue; // skip payments/credits
+
+    txs.push({
+      date, description: descRaw, amount,
+      category: autoCategory(descRaw)
     });
+  }
+  return txs;
+}
 
-    const isPDF = file.type === 'application/pdf';
-    const mediaType = isPDF ? 'application/pdf' : file.type;
-    const contentBlock = isPDF
-      ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: base64 } }
-      : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } };
+// ── State for manual mapping ──────────────────────────────────────────────────
+let _pendingCSV = null; // {headers, rows, filename}
 
-    const apiKey = localStorage.getItem('ff_api_key') || '';
-    if (!apiKey) {
-      ui.error = 'No API key set. Click the ⚙ Settings button to add your Anthropic API key.';
-      ui.stage = 'upload';
-      ui.processing = false;
-      _renderStmtTab();
+function openBankHelp() { document.getElementById('bank-help-modal').classList.add('open'); }
+function closeBankHelp() { document.getElementById('bank-help-modal').classList.remove('open'); }
+function closeMapModal() { document.getElementById('map-modal').classList.remove('open'); _pendingCSV = null; }
+
+function openMapModal(headers, rows, filename) {
+  _pendingCSV = {headers, rows, filename};
+  const selStyle = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);outline:none;margin-top:4px';
+  const opts = ['— skip —', ...headers].map((h,i) => `<option value="${i-1}">${h}</option>`).join('');
+  document.getElementById('map-modal-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+      ${[['map-date','Date *'],['map-desc','Description *'],['map-debit','Debit / Amount'],['map-credit','Credit (optional)']].map(([id,label])=>`
+        <div><label class="form-label">${label}</label><select id="${id}" style="${selStyle}">${opts}</select></div>
+      `).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--text-muted)">* required</p>`;
+  // Try to pre-select sensible defaults
+  const trySelect = (id,...terms) => {
+    const sel = document.getElementById(id);
+    const idx = headers.findIndex(h => terms.some(t => h.toLowerCase().includes(t)));
+    if (idx !== -1) sel.value = idx;
+  };
+  trySelect('map-date','date','posted');
+  trySelect('map-desc','desc','merchant','payee','detail','memo');
+  trySelect('map-debit','debit','withdraw','charge','amount');
+  trySelect('map-credit','credit','payment','deposit');
+  document.getElementById('map-modal').classList.add('open');
+}
+
+function applyManualMapping() {
+  if (!_pendingCSV) return;
+  const g = id => parseInt(document.getElementById(id).value);
+  const mapping = { date: g('map-date'), desc: g('map-desc'), debit: g('map-debit'), credit: g('map-credit'), amt: -1 };
+  if (mapping.date < 0 || mapping.desc < 0) { alert('Date and Description columns are required.'); return; }
+  const txs = rowsToTransactions(_pendingCSV.headers, _pendingCSV.rows, mapping);
+  closeMapModal();
+  if (txs.length === 0) { S.ui.error = 'No transactions found with that mapping. Check your column selections.'; render(); return; }
+  saveStatement(_pendingCSV.filename, txs);
+}
+
+function processCSVFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const {headers, rows} = parseCSV(e.target.result);
+    const mapping = detectColumns(headers);
+    if (!mapping) {
+      openMapModal(headers, rows, file.name.replace(/\.[^.]+$/,''));
       return;
     }
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20251001',
-        max_tokens: 4000,
-        system: STMT_AI_PROMPT,
-        messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract all transactions from this credit card statement. Return only the JSON array.' }] }]
-      })
-    });
-
-    if (!resp.ok) {
-      const errBody = await resp.json().catch(() => ({}));
-      console.error('Anthropic API error:', JSON.stringify(errBody));
-      throw new Error((errBody?.error?.message) || 'API error ' + resp.status);
+    const txs = rowsToTransactions(headers, rows, mapping);
+    if (txs.length === 0) {
+      S.ui.error = "Couldn't extract transactions. Try the manual column mapper.";
+      openMapModal(headers, rows, file.name.replace(/\.[^.]+$/,''));
+      return;
     }
-    const data = await resp.json();
-    const raw = (data.content.find(b => b.type === 'text') || {}).text || '[]';
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const txs = JSON.parse(clean);
-    if (!Array.isArray(txs) || txs.length === 0) throw new Error('No transactions found. Make sure you uploaded a credit card statement.');
-
-    const stmt = {
-      id: uid(),
-      name: file.name.replace(/\.[^.]+$/, ''),
-      uploadedAt: new Date().toISOString(),
-      transactions: txs
-    };
-    S.statements.unshift(stmt);
-    persist();
-    ui.stage = 'results';
-    ui.activeStmtId = stmt.id;
-    ui.filterCat = 'All';
-  } catch(e) {
-    ui.error = e.message || 'Something went wrong. Please try again.';
-    ui.stage = 'upload';
-  }
-  ui.processing = false;
-  _renderStmtTab();
+    saveStatement(file.name.replace(/\.[^.]+$/,''), txs);
+  };
+  reader.readAsText(file);
 }
 
+function saveStatement(name, txs) {
+  const stmt = { id: uid(), name, uploadedAt: new Date().toISOString(), transactions: txs };
+  S.statements.unshift(stmt);
+  persist();
+  S.ui.stage = 'results';
+  S.ui.activeStmtId = stmt.id;
+  S.ui.subTab = 'breakdown';
+  S.ui.filterCat = 'All';
+  S.ui.error = '';
+  render();
+}
 
-async function stmtProcessFiles(files) {
+function processFiles(files) {
   if (!files || files.length === 0) return;
-  if (files.length === 1) { stmtProcessFile(files[0]); return; }
-  const ui = S.stmtUiState;
-  const arr = Array.from(files);
-  ui.bulkTotal = arr.length; ui.bulkDone = 0; ui.bulkErrors = []; ui.bulkCurrentName = "";
-  ui.stage = 'bulk'; ui.processing = true;
-  _renderStmtTab();
-  for (const file of arr) {
-    ui.bulkCurrentName = file.name;
-    _renderStmtTab();
-    try { await stmtProcessFile(file); } catch(e) { ui.bulkErrors.push(file.name + ": " + (e.message||"error")); }
-    if (ui.error) { ui.bulkErrors.push(file.name + ": " + ui.error); ui.error = ""; }
-    ui.bulkDone++;
-    ui.stage = 'bulk'; ui.processing = true;
-    _renderStmtTab();
-  }
-  ui.processing = false; ui.bulkCurrentName = "";
-  ui.stage = S.statements.length ? 'results' : 'upload';
-  if (S.statements.length && !ui.activeStmtId) ui.activeStmtId = S.statements[0].id;
-  _renderStmtTab();
+  Array.from(files).forEach(f => processCSVFile(f));
 }
-function stmtImportToTransactions(stmtId) {
+
+// ── Statement actions ─────────────────────────────────────────────────────────
+function setActive(id) { S.ui.activeStmtId = id; S.ui.stage = 'results'; S.ui.filterCat = 'All'; S.ui.subTab = 'breakdown'; render(); }
+function newUpload() { S.ui.stage = 'upload'; S.ui.error = ''; render(); }
+function setSubTab(t) { S.ui.subTab = t; render(); }
+function setFilterCat(c) { S.ui.filterCat = c; render(); }
+function setFilterMonth(m) { S.ui.filterMonth = m; render(); }
+
+function deleteStatement(id) {
+  if (S.ui.pendingDelete === id) {
+    S.ui.pendingDelete = null;
+    S.statements = S.statements.filter(s => s.id !== id);
+    if (S.ui.activeStmtId === id) {
+      S.ui.activeStmtId = S.statements.length ? S.statements[0].id : null;
+      S.ui.stage = S.statements.length ? 'results' : 'upload';
+    }
+    persist();
+  } else { S.ui.pendingDelete = id; }
+  render();
+}
+function cancelDelete() { S.ui.pendingDelete = null; render(); }
+
+function importStatement(stmtId) {
   const stmt = S.statements.find(s => s.id === stmtId);
   if (!stmt) return;
-
-  // If already imported, show a warning banner instead of re-importing
   if (stmt.importedAt) {
-    S.stmtUiState.activeStmtId = stmtId;
-    S.stmtUiState.stmtSubTab = 'imported';
-    S.stmtUiState.importedCount = 0;
-    S.stmtUiState.importWarning = `This statement was already imported on ${new Date(stmt.importedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'})}.`;
-    _renderStmtTab();
-    return;
+    S.ui.importWarning = `Already imported on ${new Date(stmt.importedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'})}.`;
+    S.ui.importedCount = 0;
+    S.ui.subTab = 'log';
+    render(); return;
   }
-
   let added = 0;
   stmt.transactions.forEach(t => {
-    const tAmt = Math.round(t.amount * 100);
-    const tDesc = (t.description || '').toLowerCase().trim();
     const exists = S.transactions.some(tx =>
       tx.date === t.date &&
-      Math.round(Math.abs(tx.amount) * 100) === tAmt &&
-      (tx.merchant || '').toLowerCase().trim() === tDesc
+      Math.round(Math.abs(tx.amount)*100) === Math.round(t.amount*100) &&
+      (tx.merchant||'').toLowerCase() === (t.description||'').toLowerCase()
     );
     if (!exists) {
-      S.transactions.push({
-        id: uid(),
-        date: t.date,
-        amount: t.amount,
-        merchant: t.description,
-        category: t.category || 'Other',
-        type: 'expense',
-        note: '',
-        _stmtId: stmtId
-      });
+      S.transactions.push({ id: uid(), date: t.date, amount: t.amount, merchant: t.description, category: t.category||'Other', type: 'expense', note: '', _stmtId: stmtId });
       added++;
     }
   });
-
-  // Mark statement as imported
   stmt.importedAt = new Date().toISOString();
   persist();
-
-  S.stmtUiState.activeStmtId = stmtId;
-  S.stmtUiState.stmtSubTab = 'imported';
-  S.stmtUiState.importedCount = added;
-  S.stmtUiState.importWarning = null;
-  _renderStmtTab();
+  S.ui.importedCount = added;
+  S.ui.importWarning = null;
+  S.ui.subTab = 'log';
+  render();
 }
 
-function stmtSetActive(id) {
-  S.stmtUiState.activeStmtId = id;
-  S.stmtUiState.stage = 'results';
-  S.stmtUiState.filterCat = 'All';
-  S.stmtUiState.stmtSubTab = 'breakdown';
-  _renderStmtTab();
-}
-
-function stmtNewUpload() {
-  S.stmtUiState.stage = 'upload';
-  S.stmtUiState.error = '';
-  S.stmtUiState.forceUpload = true;
-  _renderStmtTab();
-}
-
-function stmtSetFilterCat(cat) {
-  S.stmtUiState.filterCat = cat;
-  _renderStmtTab();
-}
-
-function stmtSetLogCat(cat) {
-  if (!S.stmtUiState.filterLogCats) S.stmtUiState.filterLogCats = [];
-  const cats = S.stmtUiState.filterLogCats;
-  if (cat === 'All') {
-    S.stmtUiState.filterLogCats = [];
-  } else {
-    const idx = cats.indexOf(cat);
-    if (idx === -1) cats.push(cat); else cats.splice(idx, 1);
+// ── Category picker ───────────────────────────────────────────────────────────
+function toggleCatPicker(key, btnEl) {
+  if (S.ui.editingTx === key) { S.ui.editingTx = null; S.ui.catPickerRect = null; }
+  else {
+    S.ui.editingTx = key;
+    if (btnEl) { const r = btnEl.getBoundingClientRect(); S.ui.catPickerRect = {top: r.bottom+6, left: r.left}; }
   }
-  S.stmtUiState.selectedTxIds = [];
-  _renderStmtTab();
+  render();
 }
-
-function stmtSetLogSearch(q) {
-  S.stmtUiState.logSearch = q;
-  S.stmtUiState.selectedTxIds = [];
-  // Re-render but restore focus to search input
-  const tc = document.getElementById('tab-content');
-  const scroller = tc ? tc.querySelector('.stmt-scroll') : null;
-  const savedScroll = scroller ? scroller.scrollTop : 0;
-  if (tc) tc.innerHTML = renderStatements();
-  if (savedScroll > 0) { const ns = tc.querySelector('.stmt-scroll'); if (ns) ns.scrollTop = savedScroll; }
-  // Restore focus and cursor position to end
-  const inp = document.querySelector('#log-search-input');
-  if (inp) { inp.focus(); const len = inp.value.length; inp.setSelectionRange(len, len); }
-}
-
-function stmtToggleSelectTx(txId) {
-  const sel = S.stmtUiState.selectedTxIds || [];
-  const idx = sel.indexOf(txId);
-  if (idx === -1) sel.push(txId); else sel.splice(idx, 1);
-  S.stmtUiState.selectedTxIds = sel;
-  _renderStmtTab();
-}
-
-function stmtToggleSelectAll(txIds) {
-  const sel = S.stmtUiState.selectedTxIds || [];
-  const allSelected = txIds.every(id => sel.includes(id));
-  S.stmtUiState.selectedTxIds = allSelected ? [] : [...txIds];
-  _renderStmtTab();
-}
-
-function stmtBulkSetCat(newCat) {
-  const sel = S.stmtUiState.selectedTxIds || [];
-  sel.forEach(txId => {
-    const tx = S.transactions.find(t => t.id === txId);
-    if (tx) tx.category = newCat;
-  });
-  persist();
-  S.stmtUiState.selectedTxIds = [];
-  S.stmtUiState.bulkCatOpen = false;
-  _renderStmtTab();
-}
-
-function stmtToggleBulkCat(btnEl) {
-  S.stmtUiState.bulkCatOpen = !S.stmtUiState.bulkCatOpen;
-  if (S.stmtUiState.bulkCatOpen && btnEl) {
-    const r = btnEl.getBoundingClientRect();
-    S.stmtUiState.bulkCatRect = { top: r.bottom + 4, left: r.left };
-  }
-  _renderStmtTab();
-}
-
-function stmtSetSubTab(tab) {
-  S.stmtUiState.stmtSubTab = tab;
-  _renderStmtTab();
-}
-
-function stmtDeleteStatement(stmtId) {
-  const ui = S.stmtUiState;
-  if (ui.pendingDelete === stmtId) {
-    ui.pendingDelete = null;
-    S.statements = S.statements.filter(s => s.id !== stmtId);
-    if (ui.activeStmtId === stmtId) {
-      ui.activeStmtId = S.statements.length ? S.statements[0].id : null;
-      ui.stage = S.statements.length ? 'results' : 'upload';
-      ui.stmtSubTab = 'breakdown';
-    }
-    persist();
-  } else {
-    ui.pendingDelete = stmtId;
-  }
-  _renderStmtTab();
-}
-
-function stmtCancelDelete() {
-  S.stmtUiState.pendingDelete = null;
-  _renderStmtTab();
-}
-
-function stmtSetMonth(m) {
-  S.stmtUiState.filterMonth = m;
-  _renderStmtTab();
-}
-
-// Returns the effective (post-split) amount for a transaction
-function effectiveAmt(t) {
-  return Math.abs(t.amount) * (t._split || 1);
-}
-
-// Set split on an imported log transaction
-function stmtSetLogTxSplit(txId, split) {
-  const tx = S.transactions.find(t => t.id === txId);
-  if (tx) { tx._split = split; persist(); }
-  S.stmtUiState.splittingTx = null;
-  _renderStmtTab();
-}
-
-// Toggle split picker
-function stmtToggleSplit(key) {
-  S.stmtUiState.splittingTx = S.stmtUiState.splittingTx === key ? null : key;
-  _renderStmtTab();
-}
-
-function _splitPickerHtml(key, txId, currentSplit) {
-  const splits = [[1,'Full',null],[0.5,'½ Split','2'],[1/3,'⅓ Split','3'],[0.25,'¼ Split','4']];
-  const active = currentSplit || 1;
-  const activeLabel = splits.find(([v]) => Math.abs(v - active) < 0.01)?.[1] || 'Full';
-  const isOpen = S.stmtUiState.splittingTx === key;
-  const isSplit = active < 1;
-
-  let opts = '';
-  splits.forEach(([val, label, sup]) => {
-    const isActive = Math.abs(val - active) < 0.01;
-    opts += '<button onclick="event.stopPropagation();stmtSetLogTxSplit(\'' + txId + '\',' + val + ')" '
-      + 'style="display:block;width:100%;text-align:left;padding:7px 12px;border:none;border-radius:6px;'
-      + 'background:' + (isActive ? 'var(--bg)' : 'transparent') + ';'
-      + 'font-size:12px;font-weight:' + (isActive ? '600' : '400') + ';cursor:pointer;font-family:inherit;color:var(--text)">'
-      + label + '</button>';
-  });
-
-  const btnStyle = 'font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid '
-    + (isSplit ? 'var(--text)' : (isOpen ? 'var(--border)' : 'transparent'))
-    + ';background:' + (isSplit ? 'var(--text)' : 'transparent')
-    + ';color:' + (isSplit ? '#fff' : 'var(--text-muted)')
-    + ';cursor:pointer;font-family:inherit;font-size:11px;white-space:nowrap';
-
-  const dropdown = isOpen
-    ? '<div style="position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);z-index:50;min-width:130px;padding:6px;">'
-      + opts + '</div>'
-    : '';
-
-  return '<div style="position:relative;display:inline-block">'
-    + '<button onclick="event.stopPropagation();stmtToggleSplit(\'' + key + '\')" style="' + btnStyle + '">'
-    + (isSplit ? '÷ ' + activeLabel : '÷') + '</button>'
-    + dropdown + '</div>';
-}
-
-function _catPickerHtml(key, currentCat, onSelectFn, catEntries) {
-  const isEditing = S.stmtUiState.editingTx === key;
-  const ci = STMT_CATEGORIES[currentCat] || STMT_CATEGORIES['Other'];
-  const color = ci ? ci.color : '#a8a8a8';
-  const icon = ci ? ci.icon : '';
-  const label = (icon ? icon + ' ' : '') + currentCat;
-
-  if (isEditing) {
-    const isAddingCat = S.stmtUiState.addingCat === key;
-    const customCats = loadCustomCats();
-    let opts = '';
-    catEntries.forEach(([cat, meta]) => {
-      const col = meta.color || '#a8a8a8';
-      const ico = meta.icon || '';
-      const active = cat === currentCat;
-      const isCustom = !!customCats[cat];
-      const deleteBtn = isCustom
-        ? ' <span onclick="event.stopPropagation();stmtDeleteCustomCategory(\'' + cat + '\')" style="margin-left:4px;opacity:0.4;cursor:pointer;font-size:10px" title="Delete">✕</span>'
-        : '';
-      opts += '<button onclick="event.stopPropagation();' + onSelectFn(cat) + '" style="display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:' + (active ? 'var(--bg)' : 'transparent') + ';color:' + col + ';font-size:12px;font-weight:' + (active ? '600' : '400') + ';cursor:pointer;font-family:inherit">'
-        + '<span>' + ico + (ico?' ':'') + cat + '</span>' + deleteBtn + '</button>';
-    });
-
-    const addSection = isAddingCat
-      ? '<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:6px">'
-        + '<div style="padding:4px 6px;display:flex;flex-direction:column;gap:6px">'
-        + '<div style="display:flex;gap:4px">'
-        + '<input id="new-cat-icon" placeholder="🏷️" style="width:36px;border:1px solid var(--border);border-radius:6px;padding:4px;font-size:14px;text-align:center;background:var(--bg);font-family:inherit" maxlength="2" onclick="event.stopPropagation()">'
-        + '<input id="new-cat-name" placeholder="Category name" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--bg);font-family:inherit;min-width:0" onclick="event.stopPropagation()" onkeydown="if(event.key===\'Enter\'){event.stopPropagation();const n=document.getElementById(\'new-cat-name\').value;const i=document.getElementById(\'new-cat-icon\').value||\'🏷️\';stmtAddCustomCategory(n,i,\'#94a3b8\');}">'
-        + '</div>'
-        + '<div style="display:flex;gap:4px">'
-        + '<button onclick="event.stopPropagation();const n=document.getElementById(\'new-cat-name\').value;const i=document.getElementById(\'new-cat-icon\').value||\'🏷️\';stmtAddCustomCategory(n,i,\'#94a3b8\')" style="flex:1;padding:5px;border:none;border-radius:6px;background:var(--text);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Add</button>'
-        + '<button onclick="event.stopPropagation();S.stmtUiState.addingCat=false;_renderStmtTab()" style="flex:1;padding:5px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;cursor:pointer;font-family:inherit">Cancel</button>'
-        + '</div></div></div>'
-      : '<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:4px">'
-        + '<button onclick="event.stopPropagation();S.stmtUiState.addingCat=\'' + key + '\';_renderStmtTab()" style="display:block;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:inherit">+ Add category</button>'
-        + '</div>';
-
-    // Store dropdown HTML for portal rendering in _renderStmtTab
-    S.stmtUiState._catDropdownHtml = opts + addSection;
-  }
-
-  return '<div style="position:relative;display:inline-block">'
-    + '<button onclick="event.stopPropagation();stmtToggleCatPicker(\'' + key + '\',this)" style="font-size:11px;padding:2px 8px 2px 6px;border-radius:99px;background:var(--bg);color:' + color + ';font-weight:500;white-space:nowrap;border:1px solid ' + (isEditing ? 'var(--text)' : 'transparent') + ';cursor:pointer;font-family:inherit">' + label + ' ✎</button>'
-    + '</div>';
-}
-
-function stmtEditTxCat(stmtId, txIdx, newCat) {
+function editStmtTxCat(stmtId, txIdx, cat) {
   const stmt = S.statements.find(s => s.id === stmtId);
-  if (stmt && stmt.transactions[txIdx]) {
-    stmt.transactions[txIdx].category = newCat;
-    persist();
-  }
-  S.stmtUiState.editingTx = null;
-  _renderStmtTab();
+  if (stmt && stmt.transactions[txIdx]) { stmt.transactions[txIdx].category = cat; persist(); }
+  S.ui.editingTx = null; render();
 }
-
-function stmtEditLogTxCat(txId, newCat) {
+function editLogTxCat(txId, cat) {
   const tx = S.transactions.find(t => t.id === txId);
-  if (tx) { tx.category = newCat; persist(); }
-  S.stmtUiState.editingTx = null;
-  _renderStmtTab();
+  if (tx) { tx.category = cat; persist(); }
+  S.ui.editingTx = null; render();
+}
+function addCustomCat(name, icon) {
+  name = name.trim(); if (!name) return;
+  const c = loadCustomCats(); c[name] = {icon: icon||'🏷️', color:'#94a3b8', custom:true}; saveCustomCats(c); refreshCats();
+  S.ui.addingCat = false; render();
+}
+function deleteCustomCat(name) {
+  const c = loadCustomCats(); delete c[name]; saveCustomCats(c); refreshCats(); render();
 }
 
-function stmtToggleCatPicker(key, btnEl) {
-  const ui = S.stmtUiState;
-  if (ui.editingTx === key) {
-    ui.editingTx = null;
-    ui.catPickerRect = null;
-  } else {
-    ui.editingTx = key;
-    if (btnEl) {
-      const r = btnEl.getBoundingClientRect();
-      ui.catPickerRect = { top: r.bottom + 6, left: r.left, bottom: r.top - 6, width: r.width };
-    }
+function catPickerHtml(key, currentCat, onSelectJs) {
+  const isOpen = S.ui.editingTx === key;
+  const ci = CATS[currentCat] || CATS['Other'];
+  const label = (ci.icon||'') + ' ' + currentCat;
+  if (isOpen) {
+    const custom = loadCustomCats();
+    const isAddingCat = S.ui.addingCat === key;
+    let opts = Object.entries(CATS).map(([cat,meta]) => {
+      const isCustom = !!custom[cat];
+      const del = isCustom ? `<span onclick="event.stopPropagation();deleteCustomCat('${cat}')" style="opacity:.4;cursor:pointer;font-size:10px;margin-left:4px">✕</span>` : '';
+      return `<button onclick="event.stopPropagation();${onSelectJs(cat)}" style="display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:${cat===currentCat?'var(--bg)':'transparent'};color:${meta.color};font-size:12px;font-weight:${cat===currentCat?'600':'400'};cursor:pointer;font-family:inherit"><span>${meta.icon} ${cat}</span>${del}</button>`;
+    }).join('');
+    const addSection = isAddingCat
+      ? `<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:6px;padding:6px"><div style="display:flex;gap:4px;margin-bottom:4px"><input id="nci" placeholder="🏷️" style="width:36px;border:1px solid var(--border);border-radius:6px;padding:4px;font-size:14px;text-align:center;background:var(--bg)" maxlength="2" onclick="event.stopPropagation()"><input id="ncn" placeholder="Category name" style="flex:1;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--bg);font-family:inherit;min-width:0" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.stopPropagation();addCustomCat(document.getElementById('ncn').value,document.getElementById('nci').value)}"></div><div style="display:flex;gap:4px"><button onclick="event.stopPropagation();addCustomCat(document.getElementById('ncn').value,document.getElementById('nci').value)" style="flex:1;padding:5px;border:none;border-radius:6px;background:var(--text);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Add</button><button onclick="event.stopPropagation();S.ui.addingCat=false;render()" style="flex:1;padding:5px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-secondary);font-size:11px;cursor:pointer;font-family:inherit">Cancel</button></div></div>`
+      : `<div style="border-top:1px solid var(--border-light);margin-top:4px;padding-top:4px"><button onclick="event.stopPropagation();S.ui.addingCat='${key}';render()" style="display:block;width:100%;text-align:left;padding:6px 10px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:inherit">+ Add category</button></div>`;
+    S.ui._catDropdown = opts + addSection;
   }
-  _renderStmtTab();
+  return `<div style="position:relative;display:inline-block"><button onclick="event.stopPropagation();toggleCatPicker('${key}',this)" style="font-size:11px;padding:2px 8px 2px 6px;border-radius:99px;background:var(--bg);color:${ci.color};font-weight:500;white-space:nowrap;border:1px solid ${isOpen?'var(--text)':'transparent'};cursor:pointer;font-family:inherit">${label} ✎</button></div>`;
 }
 
-function _renderStmtTab() {
+function splitPickerHtml(key, txId, currentSplit) {
+  const active = currentSplit || 1;
+  const isOpen = S.ui.splittingTx === key;
+  const isSplit = active < 1;
+  const label = isSplit ? ({0.5:'½',0.333:'⅓',0.25:'¼'}[Math.round(active*100)/100]||'÷') : '÷';
+  const splits = [[1,'Full'],[0.5,'½ Split'],[1/3,'⅓ Split'],[0.25,'¼ Split']];
+  const dropdown = isOpen ? `<div style="position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-md);z-index:50;min-width:130px;padding:6px">${splits.map(([v,l])=>`<button onclick="event.stopPropagation();setLogTxSplit('${txId}',${v})" style="display:block;width:100%;text-align:left;padding:7px 12px;border:none;border-radius:6px;background:${Math.abs(v-active)<.01?'var(--bg)':'transparent'};font-size:12px;font-weight:${Math.abs(v-active)<.01?'600':'400'};cursor:pointer;font-family:inherit;color:var(--text)">${l}</button>`).join('')}</div>` : '';
+  return `<div style="position:relative;display:inline-block"><button onclick="event.stopPropagation();toggleSplit('${key}')" style="font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid ${isSplit?'var(--text)':isOpen?'var(--border)':'transparent'};background:${isSplit?'var(--text)':'transparent'};color:${isSplit?'#fff':'var(--text-muted)'};cursor:pointer;font-family:inherit;white-space:nowrap">${isSplit?'÷ '+label:'÷'}</button>${dropdown}</div>`;
+}
+function toggleSplit(key) { S.ui.splittingTx = S.ui.splittingTx === key ? null : key; render(); }
+function setLogTxSplit(txId, v) { const tx = S.transactions.find(t=>t.id===txId); if(tx){tx._split=v;persist();} S.ui.splittingTx=null; render(); }
+
+function toggleSelectTx(id) { const s=S.ui.selectedTxIds; const i=s.indexOf(id); i===-1?s.push(id):s.splice(i,1); render(); }
+function toggleSelectAll(ids) { const s=S.ui.selectedTxIds; const all=ids.every(id=>s.includes(id)); S.ui.selectedTxIds=all?[]:[...ids]; render(); }
+function bulkSetCat(cat) { (S.ui.selectedTxIds||[]).forEach(id=>{ const tx=S.transactions.find(t=>t.id===id); if(tx)tx.category=cat; }); persist(); S.ui.selectedTxIds=[]; S.ui.bulkCatOpen=false; render(); }
+function toggleBulkCat(el) { S.ui.bulkCatOpen=!S.ui.bulkCatOpen; if(S.ui.bulkCatOpen&&el){const r=el.getBoundingClientRect();S.ui.bulkCatRect={top:r.bottom+4,left:r.left};} render(); }
+function setLogSearch(q) {
+  S.ui.logSearch = q; S.ui.selectedTxIds = [];
   const tc = document.getElementById('tab-content');
-  if (!tc) return;
-  S.stmtUiState._catDropdownHtml = null;
-  const scroller = tc.querySelector('.stmt-scroll');
-  const savedScroll = scroller ? scroller.scrollTop : 0;
-  tc.innerHTML = renderStatements();
-  if (savedScroll > 0) {
-    const newScroller = tc.querySelector('.stmt-scroll');
-    if (newScroller) newScroller.scrollTop = savedScroll;
-  }
+  const scroll = tc?.querySelector('.stmt-scroll')?.scrollTop || 0;
+  tc.innerHTML = renderMain();
+  const ns = tc?.querySelector('.stmt-scroll'); if(ns) ns.scrollTop = scroll;
+  const inp = document.getElementById('log-search-input'); if(inp){inp.focus();const l=inp.value.length;inp.setSelectionRange(l,l);}
+  injectPortals();
+}
 
-  // Inject cat picker portal
-  const ui = S.stmtUiState;
-  let portal = document.getElementById('stmt-cat-portal');
-  if (portal) portal.remove();
-  if (ui.editingTx && ui.catPickerRect && ui._catDropdownHtml) {
+// ── Main render ───────────────────────────────────────────────────────────────
+function render() {
+  const tc = document.getElementById('tab-content'); if(!tc) return;
+  S.ui._catDropdown = null;
+  const scroll = tc.querySelector('.stmt-scroll')?.scrollTop || 0;
+  tc.innerHTML = renderMain();
+  const ns = tc.querySelector('.stmt-scroll'); if(ns) ns.scrollTop = scroll;
+  injectPortals();
+}
+
+function injectPortals() {
+  document.getElementById('stmt-cat-portal')?.remove();
+  document.getElementById('stmt-bulk-portal')?.remove();
+  const ui = S.ui;
+
+  if (ui.editingTx && ui.catPickerRect && ui._catDropdown) {
     const r = ui.catPickerRect;
-    const dropH = 320;
-    const viewH = window.innerHeight;
-    const openUp = (r.top + dropH) > viewH - 20;
-    portal = document.createElement('div');
-    portal.id = 'stmt-cat-portal';
-    portal.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.12);min-width:190px;padding:6px;max-height:320px;overflow-y:auto;'
-      + (openUp ? 'bottom:' + (viewH - r.bottom + 6) + 'px;' : 'top:' + r.top + 'px;')
-      + 'left:' + r.left + 'px;';
-    portal.innerHTML = ui._catDropdownHtml;
-    portal.addEventListener('click', e => e.stopPropagation());
-    document.body.appendChild(portal);
+    const p = document.createElement('div');
+    p.id = 'stmt-cat-portal';
+    const dropH = 320; const viewH = window.innerHeight;
+    const up = (r.top + dropH) > viewH - 20;
+    p.style.cssText = `position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:190px;padding:6px;max-height:320px;overflow-y:auto;${up?'bottom:'+(viewH-r.top+6)+'px;':'top:'+r.top+'px;'}left:${r.left}px`;
+    p.innerHTML = ui._catDropdown;
+    p.addEventListener('click', e => e.stopPropagation());
+    document.body.appendChild(p);
   }
 
-  // Inject bulk category portal
-  let bulkPortal = document.getElementById('stmt-bulk-cat-portal');
-  if (bulkPortal) bulkPortal.remove();
   if (ui.bulkCatOpen && ui.bulkCatRect) {
     const r = ui.bulkCatRect;
-    const viewH = window.innerHeight;
-    const dropH = 340;
-    const openUp = (r.top + dropH) > viewH - 20;
-    bulkPortal = document.createElement('div');
-    bulkPortal.id = 'stmt-bulk-cat-portal';
-    bulkPortal.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.12);min-width:190px;padding:6px;max-height:340px;overflow-y:auto;'
-      + (openUp ? 'bottom:' + (viewH - r.top + 4) + 'px;' : 'top:' + r.top + 'px;')
-      + 'left:' + r.left + 'px;';
-    let bulkOpts = '<div style="padding:6px 10px 4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Set category for ' + ui.selectedTxIds.length + ' transactions</div>';
-    Object.entries(STMT_CATEGORIES).forEach(([cat, meta]) => {
-      bulkOpts += '<button onclick="stmtBulkSetCat(\'' + cat + '\')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:' + meta.color + ';font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">'
-        + meta.icon + ' ' + cat + '</button>';
-    });
-    bulkPortal.innerHTML = bulkOpts;
-    bulkPortal.addEventListener('click', e => e.stopPropagation());
-    document.body.appendChild(bulkPortal);
+    const p = document.createElement('div');
+    p.id = 'stmt-bulk-portal';
+    const viewH = window.innerHeight; const dropH = 340;
+    const up = (r.top + dropH) > viewH - 20;
+    p.style.cssText = `position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:190px;padding:6px;max-height:340px;overflow-y:auto;${up?'bottom:'+(viewH-r.top+4)+'px;':'top:'+r.top+'px;'}left:${r.left}px`;
+    let html = `<div style="padding:6px 10px 4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">Set category for ${ui.selectedTxIds.length}</div>`;
+    Object.entries(CATS).forEach(([cat,meta]) => { html += `<button onclick="bulkSetCat('${cat}')" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:${meta.color};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">${meta.icon} ${cat}</button>`; });
+    p.innerHTML = html;
+    p.addEventListener('click', e => e.stopPropagation());
+    document.body.appendChild(p);
   }
 
-  // Close pickers on outside click
   if (ui.editingTx || ui.splittingTx || ui.bulkCatOpen) {
     setTimeout(() => {
-      const handler = (e) => {
-        const inPortal = e.target.closest('#stmt-cat-portal') || e.target.closest('#stmt-bulk-cat-portal');
-        const inTrigger = e.target.closest('[onclick*="stmtToggleCatPicker"]') || e.target.closest('[onclick*="stmtToggleSplit"]') || e.target.closest('[onclick*="stmtToggleBulkCat"]');
-        if (!inPortal && !inTrigger) {
-          ui.editingTx = null; ui.splittingTx = null; ui.bulkCatOpen = false;
-          ui.catPickerRect = null; ui.bulkCatRect = null;
-          document.getElementById('stmt-cat-portal')?.remove();
-          document.getElementById('stmt-bulk-cat-portal')?.remove();
-          document.removeEventListener('click', handler);
-          _renderStmtTab();
-        }
+      const h = e => {
+        const inP = e.target.closest('#stmt-cat-portal,#stmt-bulk-portal,[onclick*="toggleCatPicker"],[onclick*="toggleSplit"],[onclick*="toggleBulkCat"]');
+        if (!inP) { ui.editingTx=null;ui.splittingTx=null;ui.bulkCatOpen=false;ui.catPickerRect=null;ui.bulkCatRect=null; document.getElementById('stmt-cat-portal')?.remove(); document.getElementById('stmt-bulk-portal')?.remove(); document.removeEventListener('click',h); render(); }
       };
-      document.addEventListener('click', handler);
+      document.addEventListener('click', h);
     }, 0);
   }
 }
 
-
-function renderStatements() {
-  const ui = S.stmtUiState;
-  if (!ui.stmtSubTab) ui.stmtSubTab = 'breakdown';
-  if (!ui.importedCount) ui.importedCount = 0;
-  if (!ui.filterCat) ui.filterCat = 'All';
-  if (!ui.filterMonth) ui.filterMonth = 'All';
-
-  if (S.statements.length && ui.stage === 'upload' && !ui.error && !ui.forceUpload) {
-    ui.stage = 'results';
-    ui.activeStmtId = ui.activeStmtId || S.statements[0].id;
-  }
-
+function renderMain() {
+  const ui = S.ui;
+  if (S.statements.length && ui.stage === 'upload' && !ui.error) { ui.stage = 'results'; ui.activeStmtId = ui.activeStmtId || S.statements[0].id; }
   const activeStmt = ui.activeStmtId ? S.statements.find(s => s.id === ui.activeStmtId) : null;
 
+  // ── Sidebar ──
   const sidebarItems = S.statements.map(stmt => {
-    const total = stmt.transactions.reduce((s,t) => s+t.amount, 0);
+    const total = stmt.transactions.reduce((s,t)=>s+t.amount,0);
     const isActive = stmt.id === ui.activeStmtId && ui.stage !== 'upload';
-    const isPendingDelete = ui.pendingDelete === stmt.id;
-    if (isPendingDelete) {
-      return `<div style="padding:10px 12px;border-radius:10px;background:#fdf3f2;border:1px solid #f5c6c2;margin-bottom:6px">
-        <div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px">Delete "${stmt.name}"?</div>
-        <div style="display:flex;gap:6px">
-          <button onclick="stmtDeleteStatement('${stmt.id}')" style="flex:1;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:5px 0;cursor:pointer;font-family:inherit">Yes, delete</button>
-          <button onclick="stmtCancelDelete()" style="flex:1;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:500;padding:5px 0;cursor:pointer;font-family:inherit">Cancel</button>
-        </div>
-      </div>`;
+    if (ui.pendingDelete === stmt.id) {
+      return `<div style="padding:10px 12px;border-radius:10px;background:var(--red-bg);border:1px solid #f5c6c2;margin-bottom:6px"><div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:8px">Delete "${stmt.name}"?</div><div style="display:flex;gap:6px"><button onclick="deleteStatement('${stmt.id}')" style="flex:1;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:5px;cursor:pointer;font-family:inherit">Yes</button><button onclick="cancelDelete()" style="flex:1;background:transparent;color:var(--text-secondary);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:500;padding:5px;cursor:pointer;font-family:inherit">No</button></div></div>`;
     }
-    return `<div onclick="stmtSetActive('${stmt.id}')" style="padding:10px 12px;border-radius:10px;cursor:pointer;background:${isActive?'var(--bg)':'transparent'};border:1px solid ${isActive?'var(--border)':'transparent'};margin-bottom:6px;transition:all .15s">
-      <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stmt.name}</div>
-      <div style="display:flex;justify-content:space-between;margin-top:3px;align-items:center">
-        <span style="font-size:11px;color:var(--text-muted)">${stmt.transactions.length} txns</span>
-        <div style="display:flex;align-items:center;gap:5px">
-          ${stmt.importedAt ? '<span style="font-size:10px;color:var(--green);font-weight:600">✓ imported</span>' : ''}
-          <span style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--red)">−${fmtCAD(total)}</span>
-        </div>
-      </div>
-    </div>`;
+    return `<div onclick="setActive('${stmt.id}')" style="padding:10px 12px;border-radius:10px;cursor:pointer;background:${isActive?'var(--bg)':'transparent'};border:1px solid ${isActive?'var(--border)':'transparent'};margin-bottom:6px;transition:all .15s"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${stmt.name}</div><div style="display:flex;justify-content:space-between;margin-top:3px;align-items:center"><span style="font-size:11px;color:var(--text-muted)">${stmt.transactions.length} txns</span><div style="display:flex;align-items:center;gap:5px">${stmt.importedAt?'<span style="font-size:10px;color:var(--green);font-weight:600">✓</span>':''}<span style="font-size:11px;font-family:\'DM Mono\',monospace;color:var(--red)">−${fmtCAD(total)}</span></div></div></div>`;
   }).join('');
 
-  const sidebar = `<div style="width:200px;flex-shrink:0">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Statements</div>
-      <button onclick="stmtNewUpload()" style="background:var(--text);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;font-family:inherit">+ New</button>
-    </div>
-    ${sidebarItems || '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No statements yet</div>'}
-  </div>`;
+  const sidebar = `<div style="width:200px;flex-shrink:0"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Statements</div><button onclick="newUpload()" style="background:var(--text);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;padding:4px 9px;cursor:pointer;font-family:inherit">+ New</button></div>${sidebarItems||'<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No statements yet</div>'}</div>`;
 
-  let mainContent = '';
-
-  if (ui.stage === 'bulk') {
-    const pct = ui.bulkTotal > 0 ? Math.round(ui.bulkDone/ui.bulkTotal*100) : 0;
-    const errs = ui.bulkErrors.length ? "<div style=margin-top:16px;font-size:12px;color:var(--red)>" + ui.bulkErrors.map(e=>"<div>" + e + "</div>").join("") + "</div>" : "";
-    mainContent = "<div style=flex:1><div style=padding:60px_32px;text-align:center><div style=font-size:36px;margin-bottom:16px>&#x1F4C2;</div><div style=font-size:18px;font-weight:600;margin-bottom:8px>Processing " + ui.bulkDone + " of " + ui.bulkTotal + " statements</div><div style=font-size:13px;color:var(--text-muted);margin-bottom:24px>" + (ui.bulkCurrentName||"Starting...") + "</div><div style=background:var(--border-light);border-radius:99px;height:6px;max-width:320px;margin:0_auto_10px><div style=background:var(--text);height:100%;border-radius:99px;width:" + pct + "%;transition:width_.4s></div></div><div style=font-size:12px;color:var(--text-muted)>" + pct + "% complete</div>" + errs + "</div></div>";
-  } else if (ui.stage === "processing") {
-    mainContent = `<div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;min-height:300px">
-      <div style="font-size:32px;animation:stmtPulse 1.2s ease-in-out infinite">⚡</div>
-      <div style="font-size:15px;font-weight:600;color:var(--text)">Extracting transactions…</div>
-      <div style="font-size:12px;color:var(--text-muted)">AI is reading your statement</div>
-      <div style="width:200px;height:3px;background:var(--border-light);border-radius:99px;overflow:hidden;margin-top:8px">
-        <div style="height:100%;background:var(--text);border-radius:99px;animation:stmtProgress 1.8s ease-in-out infinite"></div>
-      </div>
-    </div>`;
-
-  } else if (ui.stage === 'upload' || !activeStmt) {
-    const errorHtml = ui.error ? `<div style="background:var(--red-bg);border:1px solid #f5c6c2;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--red)">⚠ ${ui.error}</div>` : '';
-    mainContent = `<div style="flex:1">
-      ${errorHtml}
-      <label style="cursor:pointer;display:block">
-        <input type="file" accept=".pdf,image/*" multiple style="display:none" onchange="stmtProcessFiles(this.files);this.value='';">
-        <div style="border:2px dashed var(--border);border-radius:var(--radius);padding:48px 32px;text-align:center;transition:all .2s;cursor:pointer"
-          ondragover="event.preventDefault();this.style.borderColor='var(--text)';this.style.background='var(--bg)'"
-          ondragleave="this.style.borderColor='var(--border)';this.style.background='transparent'"
-          ondrop="event.preventDefault();this.style.borderColor='var(--border)';this.style.background='transparent';stmtProcessFiles(event.dataTransfer.files)">
-          <div style="font-size:36px;margin-bottom:14px">📄</div>
-          <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px">Drop your CC statement here</div>
-          <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">PDF or screenshot · TD, RBC, Scotiabank, Amex, and more</div>
-          <div style="display:inline-block;background:var(--text);color:#fff;padding:9px 22px;border-radius:var(--radius-sm);font-size:13px;font-weight:500">Browse Files</div>
-        </div>
-      </label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px">
-        ${[['Extracts all transactions','Every charge automatically found'],['Auto-categorizes spending','Dining, transport, groceries & more'],['Import to log','Push to your transaction history']].map(([t,s])=>`<div style="background:var(--surface);border-radius:var(--radius-sm);border:1px solid var(--border-light);padding:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">✓ ${t}</div><div style="font-size:12px;color:var(--text-muted)">${s}</div></div>`).join('')}
-      </div>
-    </div>`;
-
-  } else {
-    const stmt = activeStmt;
-    const allTxs = stmt.transactions;
-
-    // Derive months from ALL imported log txs + this statement
-    const allLogTxs = [...S.transactions].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-    const monthSet = new Set();
-    allLogTxs.forEach(t => { if(t.date) monthSet.add(t.date.slice(0,7)); });
-    allTxs.forEach(t => { if(t.date) monthSet.add(t.date.slice(0,7)); });
-    const availableMonths = Array.from(monthSet).sort().reverse();
-
-    // Global log filtered by month — used by Breakdown + Imported Log
-    const filteredLogTxs = ui.filterMonth === 'All' ? allLogTxs : allLogTxs.filter(t => t.date && t.date.startsWith(ui.filterMonth));
-    const globalTotal = filteredLogTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+effectiveAmt(t),0);
-    const globalByCat = {};
-    filteredLogTxs.filter(t=>t.type==='expense').forEach(t => {
-      const c = t.category||'Other';
-      if(!globalByCat[c]) globalByCat[c]={total:0,count:0};
-      globalByCat[c].total += effectiveAmt(t);
-      globalByCat[c].count++;
-    });
-    const globalSortedCats = Object.entries(globalByCat).sort((a,b) => b[1].total - a[1].total);
-
-    // Per-statement categories — used by This Statement tab only
-    const stmtByCat = {};
-    allTxs.forEach(t => { const c=t.category||'Other'; if(!stmtByCat[c]){stmtByCat[c]={total:0,count:0};} stmtByCat[c].total+=t.amount; stmtByCat[c].count++; });
-    const stmtSortedCats = Object.entries(stmtByCat).sort((a,b) => b[1].total - a[1].total);
-
-    const monthLabel = m => { const [y,mo] = m.split('-'); return new Date(+y,+mo-1,1).toLocaleString('en-CA',{month:'short',year:'numeric'}); };
-    const monthFilterBar = availableMonths.length > 0 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center">
-      <span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:2px">Month:</span>
-      ${['All',...availableMonths].map(m => {
-        const active = ui.filterMonth === m;
-        return `<button onclick="stmtSetMonth('${m}')" style="padding:5px 12px;border-radius:99px;border:1px solid ${active?'var(--text)':'var(--border)'};background:${active?'var(--text)':'transparent'};color:${active?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s">${m==='All'?'All':monthLabel(m)}</button>`;
-      }).join('')}
-    </div>` : '';
-
-    const subTabs = [
-      {id:'breakdown',    label:'Breakdown'},
-      {id:'imported',     label:`Imported Log (${allLogTxs.length})`},
-      {id:'transactions', label:`This Statement (${allTxs.length})`},
-    ];
-    const subTabBar = `<div class="tab-bar" style="margin-bottom:18px">${subTabs.map(t=>`<button class="tab-btn${ui.stmtSubTab===t.id?' active':''}" onclick="stmtSetSubTab('${t.id}')">${t.label}</button>`).join('')}</div>`;
-
-    const isPendingDelete = ui.pendingDelete === stmt.id;
-    const deleteSection = isPendingDelete
-      ? `<span style="font-size:12px;color:var(--red);font-weight:500;display:flex;align-items:center;gap:6px">Sure? <button onclick="stmtDeleteStatement('${stmt.id}')" style="background:var(--red);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">Yes</button><button onclick="stmtCancelDelete()" style="background:transparent;border:1px solid var(--border);border-radius:5px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">No</button></span>`
-      : `<button onclick="stmtDeleteStatement('${stmt.id}')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--red)">Delete</button>`;
-
-    const importBtn = stmt.importedAt
-      ? `<button onclick="stmtImportToTransactions('${stmt.id}')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--green)">&#10003; Imported</button>`
-      : `<button onclick="stmtImportToTransactions('${stmt.id}')" class="btn btn-dark" style="font-size:12px;padding:7px 14px">&#8595; Import to Log</button>`;
-
-    const headerBtns = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${importBtn}${deleteSection}</div>`;
-
-    let tabContent = '';
-
-    if (ui.stmtSubTab === 'breakdown') {
-      const summaryCards = [
-        {label:'Total Spent', val: globalTotal > 0 ? fmtCAD(globalTotal) : '$0.00', color:'var(--red)'},
-        {label:'Transactions', val: filteredLogTxs.length, color:'var(--text)'},
-        {label:'Top Category', val: globalSortedCats[0] ? globalSortedCats[0][0] : '—', color:'var(--text)'},
-      ].map(c=>`<div style="background:var(--bg);border-radius:var(--radius-sm);padding:14px 16px"><div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">${c.label}</div><div style="font-size:${c.label==='Top Category'?'13px':'18px'};font-weight:700;font-family:'DM Mono',monospace;color:${c.color}">${c.val}</div></div>`).join('');
-      const barMax = globalSortedCats[0] ? globalSortedCats[0][1].total : 1;
-      const catBars = globalSortedCats.length ? globalSortedCats.map(([cat,{total:ct,count}]) => {
-        const ci = STMT_CATEGORIES[cat]||STMT_CATEGORIES['Other'];
-        const pct = globalTotal > 0 ? (ct/globalTotal*100).toFixed(0) : 0;
-        return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>${ci.icon} ${cat} <span style="color:var(--text-muted);font-size:11px">(${count})</span></span><span style="font-family:'DM Mono',monospace;font-size:12px">${fmtCAD(ct)} <span style="color:var(--text-muted)">${pct}%</span></span></div><div style="height:4px;background:var(--border-light);border-radius:99px"><div style="height:100%;border-radius:99px;background:${ci.color};width:${(ct/barMax*100).toFixed(1)}%"></div></div></div>`;
-      }).join('') : `<div style="padding:24px 0;text-align:center;color:var(--text-muted);font-size:13px">${allLogTxs.length===0?'Import a statement to see your spending breakdown':'No transactions for this month'}</div>`;
-      const importedCount = S.statements.filter(s=>s.importedAt).length;
-      const note = importedCount > 0 ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Across ${importedCount} imported statement${importedCount===1?'':'s'}</div>` : '';
-      tabContent = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">${summaryCards}</div><div class="card" style="padding:20px">${note}${catBars}</div>`;
-
-    } else if (ui.stmtSubTab === 'imported') {
-      if (!ui.filterLogCats) ui.filterLogCats = [];
-      if (!ui.selectedTxIds) ui.selectedTxIds = [];
-      if (!ui.logSearch) ui.logSearch = '';
-      const activeCats = ui.filterLogCats;
-      const stmtNameById = {};
-      S.statements.forEach(s => { stmtNameById[s.id] = s.name; });
-      const banner = ui.importWarning
-        ? `<div style="background:#fdf6ec;border:1px solid #f5d9a8;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92600a">&#9888; ${ui.importWarning}</div>`
-        : ui.importedCount>0
-          ? `<div style="background:var(--green-bg);border:1px solid #c8ddd6;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--green)">&#10003; Imported ${ui.importedCount} transaction${ui.importedCount===1?'':'s'} into your log.</div>`
-          : '';
-
-      // Sort by date desc
-      const sortedLogTxs = [...filteredLogTxs].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-
-      // Apply search filter
-      const searchQ = (ui.logSearch||'').toLowerCase().trim();
-      const searchedTxs = searchQ
-        ? sortedLogTxs.filter(t => (t.merchant||'').toLowerCase().includes(searchQ))
-        : sortedLogTxs;
-
-      // Build category counts from searched txs
-      const logCatCounts = {};
-      searchedTxs.forEach(t => { const c = t.category||'Other'; logCatCounts[c] = (logCatCounts[c]||0)+1; });
-      const logCatsSorted = Object.entries(logCatCounts).sort((a,b)=>b[1]-a[1]);
-
-      // Apply multi-category filter
-      const catFilteredLogTxs = activeCats.length === 0 ? searchedTxs : searchedTxs.filter(t => activeCats.includes(t.category||'Other'));
-      const visibleIds = catFilteredLogTxs.map(t => t.id);
-      const sel = ui.selectedTxIds;
-      const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => sel.includes(id));
-
-      // Search bar
-      const searchBar = '<div style="padding:10px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:8px;align-items:center">'
-        + '<span style="color:var(--text-muted);font-size:13px">🔍</span>'
-        + '<input id="log-search-input" value="' + (ui.logSearch||'').replace(/"/g,'&quot;') + '" placeholder="Search transactions…" oninput="stmtSetLogSearch(this.value)" onclick="event.stopPropagation()" style="flex:1;border:none;outline:none;font-size:13px;font-family:inherit;background:transparent;color:var(--text)">'
-        + (ui.logSearch ? '<button onclick="stmtSetLogSearch(\'\')" style="border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:0 2px">✕</button>' : '')
-        + '</div>';
-
-      // Category filter bar (multi-select)
-      const isAllActive = activeCats.length === 0;
-      const logCatFilterBar = logCatsSorted.length > 0 ? '<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:5px;flex-wrap:wrap;align-items:center">'
-        + `<button onclick="stmtSetLogCat('All')" style="padding:3px 9px;border-radius:99px;border:1px solid ${isAllActive?'var(--text)':'var(--border)'};background:${isAllActive?'var(--text)':'transparent'};color:${isAllActive?'#fff':'var(--text-secondary)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s">All</button>`
-        + logCatsSorted.map(([c]) => {
-            const active = activeCats.includes(c);
-            const ci = STMT_CATEGORIES[c] || STMT_CATEGORIES['Other'];
-            return `<button onclick="stmtSetLogCat('${c}')" style="padding:3px 9px;border-radius:99px;border:1px solid ${active?ci.color:'var(--border)'};background:${active?ci.color:'transparent'};color:${active?'#fff':'var(--text-secondary)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s">${ci.icon} ${c}</button>`;
-          }).join('')
-        + '</div>' : '';
-
-      // Bulk action bar (shown when items selected)
-      const bulkBar = sel.length > 0
-        ? '<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);background:#f0f7f4;display:flex;align-items:center;gap:10px">'
-          + '<span style="font-size:12px;font-weight:600;color:var(--green)">' + sel.length + ' selected</span>'
-          + '<button onclick="stmtToggleBulkCat(this)" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:inherit;font-weight:500">Set category ▾</button>'
-          + '<button onclick="S.stmtUiState.selectedTxIds=[];_renderStmtTab()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;font-family:inherit;color:var(--text-muted)">Clear</button>'
-          + '</div>'
-        : '';
-
-      const logCatEntries = Object.entries(STMT_CATEGORIES);
-      const rows = catFilteredLogTxs.length ? catFilteredLogTxs.map(t => {
-        const srcName = t._stmtId && stmtNameById[t._stmtId] ? stmtNameById[t._stmtId] : '';
-        const pickerKey = 'log:' + t.id;
-        const catPill = _catPickerHtml(pickerKey, t.category, cat => 'stmtEditLogTxCat(\'' + t.id + '\',\'' + cat + '\')', logCatEntries);
-        const splitKey = 'split:' + t.id;
-        const splitPicker = _splitPickerHtml(splitKey, t.id, t._split);
-        const effAmt = effectiveAmt(t);
-        const isSplit = (t._split || 1) < 1;
-        const isSelected = sel.includes(t.id);
-        const amtHtml = isSplit
-          ? '<div style="text-align:right;line-height:1.3"><div style="font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red);font-size:14px">&#8722;' + fmtCAD(effAmt) + '</div>'
-            + '<div style="font-size:10px;color:var(--text-muted);text-decoration:line-through">&#8722;' + fmtCAD(Math.abs(t.amount)) + '</div></div>'
-          : '<span style="font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red);font-size:14px;white-space:nowrap">&#8722;' + fmtCAD(effAmt) + '</span>';
-        const srcTag = srcName ? '<span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:4px">' + srcName + '</span>' : '';
-        const checkbox = '<input type="checkbox" ' + (isSelected?'checked':'') + ' onclick="event.stopPropagation();stmtToggleSelectTx(\'' + t.id + '\')" style="width:15px;height:15px;cursor:pointer;flex-shrink:0;margin-top:2px;accent-color:var(--text)">';
-        return '<div style="display:flex;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px;background:' + (isSelected?'var(--bg)':'transparent') + ';transition:background .1s">'
-          + '<div style="padding-top:1px">' + checkbox + '</div>'
-          + '<div style="flex:1;min-width:0">'
-          +   '<div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:0.01em">' + (t.merchant||'') + '</div>'
-          +   '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
-          +     '<span style="color:var(--text-muted);font-size:11px;font-family:\'DM Mono\',monospace">' + t.date + '</span>'
-          +     catPill + splitPicker + srcTag
-          +   '</div>'
-          + '</div>'
-          + '<div style="flex-shrink:0;padding-top:2px">' + amtHtml + '</div>'
-          + '</div>';
-      }).join('') : '<div style="padding:40px;text-align:center"><div style="font-size:28px;margin-bottom:12px;opacity:.3">&#128229;</div>'
-          + '<div style="font-size:14px;font-weight:600;margin-bottom:6px">' + (searchQ ? 'No results for "' + searchQ + '"' : (allLogTxs.length&&ui.filterMonth!=='All'?'No transactions for this month':'No transactions imported yet')) + '</div>'
-          + '<div style="font-size:12px;color:var(--text-muted)">' + (searchQ ? 'Try a different search' : 'Import a statement to populate this log') + '</div></div>';
-
-      const logTotal = catFilteredLogTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+effectiveAmt(t),0);
-
-      // Select-all checkbox in header
-      const selectAllCb = '<input type="checkbox" ' + (allVisibleSelected?'checked':'') + ' onclick="stmtToggleSelectAll(' + JSON.stringify(visibleIds) + ')" style="width:14px;height:14px;cursor:pointer;accent-color:var(--text)" title="Select all">';
-
-      tabContent = `${banner}<div class="card" style="padding:0;overflow:hidden">`
-        + `<div style="padding:11px 20px;border-bottom:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center">`
-        + `<div style="display:flex;align-items:center;gap:10px">${selectAllCb}<span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">All Imported Transactions</span></div>`
-        + `<span style="font-size:12px;color:var(--text-muted)">${allLogTxs.length} total</span></div>`
-        + searchBar + logCatFilterBar + bulkBar
-        + `<div class="stmt-scroll" style="max-height:500px;overflow-y:auto">${rows}</div>`
-        + (catFilteredLogTxs.length ? `<div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ${catFilteredLogTxs.length}</span><span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red)">&#8722;${fmtCAD(logTotal)}</span></div>` : '')
-        + `</div>`;
-
-    } else if (ui.stmtSubTab === 'transactions') {
-      const filtered = ui.filterCat==='All' ? allTxs : allTxs.filter(t=>t.category===ui.filterCat);
-      const catBtns = ['All',...stmtSortedCats.map(([c])=>c)].map(c=>{
-        const active=ui.filterCat===c;
-        return `<button onclick="stmtSetFilterCat('${c}')" style="padding:5px 12px;border-radius:99px;border:1px solid ${active?'var(--text)':'var(--border)'};background:${active?'var(--text)':'transparent'};color:${active?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s">${c}</button>`;
-      }).join('');
-      const stmtCatEntries = Object.entries(STMT_CATEGORIES);
-      const txRows = filtered.map((t)=>{
-        const ci=STMT_CATEGORIES[t.category]||STMT_CATEGORIES['Other'];
-        const txIdx = allTxs.indexOf(t);
-        const pickerKey = 'stmt:' + txIdx;
-        const catPicker = _catPickerHtml(pickerKey, t.category, cat => 'stmtEditTxCat(\'' + stmt.id + '\',' + txIdx + ',\'' + cat + '\')', stmtCatEntries);
-        return '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px">'
-          + '<div style="flex:1;min-width:0">'
-          +   '<div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:0.01em">' + t.description + '</div>'
-          +   '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
-          +     '<span style="color:var(--text-muted);font-size:11px;font-family:\'DM Mono\',monospace">' + t.date + '</span>'
-          +     catPicker
-          +   '</div>'
-          + '</div>'
-          + '<div style="flex-shrink:0;padding-top:2px;font-family:\'DM Mono\',monospace;font-weight:700;color:var(--red);font-size:14px;white-space:nowrap">&#8722;' + fmtCAD(t.amount) + '</div>'
-          + '</div>';
-      }).join('');
-      tabContent = `<div class="card" style="padding:0;overflow:hidden"><div style="padding:12px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:4px">Category:</span>${catBtns}</div><div class="stmt-scroll" style="max-height:500px;overflow-y:auto">${txRows||'<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No transactions</div>'}</div><div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ${filtered.length} of ${allTxs.length}</span><span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red)">&#8722;${fmtCAD(filtered.reduce((s,t)=>s+t.amount,0))}</span></div></div>`;
-    }
-    mainContent = `<div style="flex:1;min-width:0">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-        <div><div style="font-size:16px;font-weight:600">${stmt.name}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${new Date(stmt.uploadedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'})}</div></div>
-        ${headerBtns}
-      </div>
-      ${subTabBar}
-      ${monthFilterBar}
-      ${tabContent}
-    </div>`;
+  // ── Upload screen ──
+  if (ui.stage === 'upload' || !activeStmt) {
+    const errHtml = ui.error ? `<div style="background:var(--red-bg);border:1px solid #f5c6c2;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--red)">⚠ ${ui.error}</div>` : '';
+    const main = `<div style="flex:1">${errHtml}<label style="cursor:pointer;display:block"><input type="file" accept=".csv,text/csv" multiple style="display:none" onchange="processFiles(this.files);this.value=''"><div style="border:2px dashed var(--border);border-radius:18px;padding:48px 32px;text-align:center;transition:all .2s" ondragover="event.preventDefault();this.style.borderColor='var(--text)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="event.preventDefault();this.style.borderColor='var(--border)';processFiles(event.dataTransfer.files)"><div style="font-size:36px;margin-bottom:14px">📊</div><div style="font-size:16px;font-weight:600;margin-bottom:6px">Drop your CSV statement here</div><div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">Export from TD, RBC, Scotiabank, CIBC, BMO, or Amex · Click "? How to export CSV" above for help</div><div style="display:inline-block;background:var(--text);color:#fff;padding:9px 22px;border-radius:11px;font-size:13px;font-weight:500">Browse Files</div></div></label><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px">${[['Auto-categorizes','Groceries, dining, transport & more'],['Instant','No AI wait time, no API key'],['Edit anything','Fix categories after import']].map(([t,s])=>`<div style="background:var(--surface);border-radius:11px;border:1px solid var(--border-light);padding:14px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">✓ ${t}</div><div style="font-size:12px;color:var(--text-muted)">${s}</div></div>`).join('')}</div></div>`;
+    return `<div style="margin-bottom:28px"><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Statement Analyzer</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">Upload a CSV export from your bank · instant categorization</div></div><div style="display:flex;gap:24px;align-items:flex-start">${sidebar}${main}</div>`;
   }
 
-  return `<style>
-    @keyframes stmtPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-    @keyframes stmtProgress { 0%{transform:translateX(-100%);width:60%} 100%{transform:translateX(200%);width:60%} }
-  </style>
-  <div class="page-header"><div><div class="page-title">Statement Analyzer</div><div class="page-sub">Upload a CC statement · AI extracts &amp; categorizes every transaction</div></div></div>
-  <div style="display:flex;gap:24px;align-items:flex-start">
-    ${sidebar}
-    ${mainContent}
+  // ── Results screen ──
+  const stmt = activeStmt;
+  const allTxs = stmt.transactions;
+  const allLogTxs = [...S.transactions].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  // Month filter options
+  const monthSet = new Set();
+  allLogTxs.forEach(t=>{ if(t.date) monthSet.add(t.date.slice(0,7)); });
+  allTxs.forEach(t=>{ if(t.date) monthSet.add(t.date.slice(0,7)); });
+  const months = Array.from(monthSet).sort().reverse();
+  const ml = m => { const [y,mo]=m.split('-'); return new Date(+y,+mo-1,1).toLocaleString('en-CA',{month:'short',year:'numeric'}); };
+
+  const filteredLog = ui.filterMonth==='All' ? allLogTxs : allLogTxs.filter(t=>t.date&&t.date.startsWith(ui.filterMonth));
+  const monthBar = months.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:2px">Month:</span>${['All',...months].map(m=>`<button onclick="setFilterMonth('${m}')" style="padding:5px 12px;border-radius:99px;border:1px solid ${ui.filterMonth===m?'var(--text)':'var(--border)'};background:${ui.filterMonth===m?'var(--text)':'transparent'};color:${ui.filterMonth===m?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">${m==='All'?'All':ml(m)}</button>`).join('')}</div>` : '';
+
+  const subTabs = [{id:'breakdown',label:'Breakdown'},{id:'log',label:`Imported Log (${allLogTxs.length})`},{id:'transactions',label:`This Statement (${allTxs.length})`}];
+  const tabBar = `<div class="tab-bar" style="margin-bottom:18px">${subTabs.map(t=>`<button class="tab-btn${ui.subTab===t.id?' active':''}" onclick="setSubTab('${t.id}')">${t.label}</button>`).join('')}</div>`;
+
+  const isPendingDel = ui.pendingDelete === stmt.id;
+  const deleteSection = isPendingDel
+    ? `<span style="font-size:12px;color:var(--red);font-weight:500;display:flex;align-items:center;gap:6px">Sure? <button onclick="deleteStatement('${stmt.id}')" style="background:var(--red);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer">Yes</button><button onclick="cancelDelete()" style="background:transparent;border:1px solid var(--border);border-radius:5px;font-size:11px;padding:4px 10px;cursor:pointer;color:var(--text-secondary)">No</button></span>`
+    : `<button onclick="deleteStatement('${stmt.id}')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--red)">Delete</button>`;
+  const importBtn = stmt.importedAt
+    ? `<button onclick="importStatement('${stmt.id}')" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;color:var(--green)">✓ Imported</button>`
+    : `<button onclick="importStatement('${stmt.id}')" class="btn btn-dark" style="font-size:12px;padding:7px 14px">↓ Import to Log</button>`;
+
+  let tabContent = '';
+
+  if (ui.subTab === 'breakdown') {
+    // Use global log for breakdown
+    const expTxs = filteredLog.filter(t=>t.type==='expense');
+    const total = expTxs.reduce((s,t)=>s+effectiveAmt(t),0);
+    const byCat = {};
+    expTxs.forEach(t=>{ const c=t.category||'Other'; if(!byCat[c]){byCat[c]={total:0,count:0};} byCat[c].total+=effectiveAmt(t); byCat[c].count++; });
+    const sorted = Object.entries(byCat).sort((a,b)=>b[1].total-a[1].total);
+    const barMax = sorted[0]?sorted[0][1].total:1;
+    const importedCount = S.statements.filter(s=>s.importedAt).length;
+
+    const summaryCards = [
+      {label:'Total Spent',val:total>0?fmtCAD(total):'$0.00',color:'var(--red)'},
+      {label:'Transactions',val:expTxs.length,color:'var(--text)'},
+      {label:'Top Category',val:sorted[0]?sorted[0][0]:'—',color:'var(--text)'}
+    ].map(c=>`<div style="background:var(--bg);border-radius:11px;padding:14px 16px"><div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">${c.label}</div><div style="font-size:${c.label==='Top Category'?'13px':'18px'};font-weight:700;font-family:'DM Mono',monospace;color:${c.color}">${c.val}</div></div>`).join('');
+    const bars = sorted.length ? sorted.map(([cat,{total:ct,count}])=>{
+      const ci = CATS[cat]||CATS['Other']; const pct = total>0?(ct/total*100).toFixed(0):0;
+      return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>${ci.icon} ${cat} <span style="color:var(--text-muted);font-size:11px">(${count})</span></span><span style="font-family:'DM Mono',monospace;font-size:12px">${fmtCAD(ct)} <span style="color:var(--text-muted)">${pct}%</span></span></div><div style="height:4px;background:var(--border-light);border-radius:99px"><div style="height:100%;border-radius:99px;background:${ci.color};width:${(ct/barMax*100).toFixed(1)}%"></div></div></div>`;
+    }).join('') : `<div style="padding:24px 0;text-align:center;color:var(--text-muted);font-size:13px">${allLogTxs.length===0?'Import a statement to see your breakdown':'No transactions for this month'}</div>`;
+    tabContent = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">${summaryCards}</div><div class="card" style="padding:20px">${importedCount>0?`<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Across ${importedCount} imported statement${importedCount===1?'':'s'}</div>`:''}${bars}</div>`;
+
+  } else if (ui.subTab === 'log') {
+    const banner = ui.importWarning
+      ? `<div style="background:#fdf6ec;border:1px solid #f5d9a8;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#92600a">⚠ ${ui.importWarning}</div>`
+      : ui.importedCount>0
+        ? `<div style="background:var(--green-bg);border:1px solid #c8ddd6;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--green)">✓ Imported ${ui.importedCount} transaction${ui.importedCount===1?'':'s'} into your log.</div>`
+        : '';
+
+    const stmtNames = {}; S.statements.forEach(s=>{ stmtNames[s.id]=s.name; });
+    const activeCats = ui.filterLogCats||[];
+    const searchQ = (ui.logSearch||'').toLowerCase().trim();
+    const sorted = [...filteredLog].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const searched = searchQ ? sorted.filter(t=>(t.merchant||'').toLowerCase().includes(searchQ)) : sorted;
+
+    const catCounts = {};
+    searched.forEach(t=>{ const c=t.category||'Other'; catCounts[c]=(catCounts[c]||0)+1; });
+    const catsSorted = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]);
+    const filtered = activeCats.length===0 ? searched : searched.filter(t=>activeCats.includes(t.category||'Other'));
+    const visIds = filtered.map(t=>t.id);
+    const sel = ui.selectedTxIds||[];
+    const allSel = visIds.length>0 && visIds.every(id=>sel.includes(id));
+
+    const searchBar = `<div style="padding:10px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:8px;align-items:center"><span style="color:var(--text-muted);font-size:13px">🔍</span><input id="log-search-input" value="${(ui.logSearch||'').replace(/"/g,'&quot;')}" placeholder="Search…" oninput="setLogSearch(this.value)" onclick="event.stopPropagation()" style="flex:1;border:none;outline:none;font-size:13px;font-family:inherit;background:transparent;color:var(--text)">${ui.logSearch?'<button onclick="setLogSearch(\'\')" style="border:none;background:none;color:var(--text-muted);cursor:pointer;font-size:14px">✕</button>':''}</div>`;
+    const catFilter = catsSorted.length ? `<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:5px;flex-wrap:wrap"><button onclick="S.ui.filterLogCats=[];render()" style="padding:3px 9px;border-radius:99px;border:1px solid ${activeCats.length===0?'var(--text)':'var(--border)'};background:${activeCats.length===0?'var(--text)':'transparent'};color:${activeCats.length===0?'#fff':'var(--text-secondary)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">All</button>${catsSorted.map(([c])=>{ const ci=CATS[c]||CATS['Other']; const on=activeCats.includes(c); return `<button onclick="const i=S.ui.filterLogCats.indexOf('${c}');i===-1?S.ui.filterLogCats.push('${c}'):S.ui.filterLogCats.splice(i,1);S.ui.selectedTxIds=[];render()" style="padding:3px 9px;border-radius:99px;border:1px solid ${on?ci.color:'var(--border)'};background:${on?ci.color:'transparent'};color:${on?'#fff':'var(--text-secondary)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">${ci.icon} ${c}</button>`; }).join('')}</div>` : '';
+    const bulkBar = sel.length>0 ? `<div style="padding:8px 20px;border-bottom:1px solid var(--border-light);background:#f0f7f4;display:flex;align-items:center;gap:10px"><span style="font-size:12px;font-weight:600;color:var(--green)">${sel.length} selected</span><button onclick="toggleBulkCat(this)" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:inherit;font-weight:500">Set category ▾</button><button onclick="S.ui.selectedTxIds=[];render()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;font-family:inherit;color:var(--text-muted)">Clear</button></div>` : '';
+    const catEntries = Object.entries(CATS);
+    const rows = filtered.length ? filtered.map(t=>{
+      const isSplit=(t._split||1)<1; const eff=effectiveAmt(t);
+      const picker = catPickerHtml('log:'+t.id, t.category, cat=>`editLogTxCat('${t.id}','${cat}')`);
+      const split = splitPickerHtml('split:'+t.id, t.id, t._split);
+      const src = t._stmtId&&stmtNames[t._stmtId] ? `<span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:4px">${stmtNames[t._stmtId]}</span>` : '';
+      const isSel = sel.includes(t.id);
+      const amtHtml = isSplit
+        ? `<div style="text-align:right;line-height:1.3"><div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red);font-size:14px">−${fmtCAD(eff)}</div><div style="font-size:10px;color:var(--text-muted);text-decoration:line-through">−${fmtCAD(Math.abs(t.amount))}</div></div>`
+        : `<span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--red);font-size:14px">−${fmtCAD(eff)}</span>`;
+      return `<div style="display:flex;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px;background:${isSel?'var(--bg)':'transparent'}"><div style="padding-top:1px"><input type="checkbox" ${isSel?'checked':''} onclick="event.stopPropagation();toggleSelectTx('${t.id}')" style="width:15px;height:15px;cursor:pointer;accent-color:var(--text)"></div><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:.01em">${t.merchant||''}</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--text-muted);font-size:11px;font-family:'DM Mono',monospace">${t.date}</span>${picker}${split}${src}</div></div><div style="flex-shrink:0;padding-top:2px">${amtHtml}</div></div>`;
+    }).join('') : `<div style="padding:40px;text-align:center"><div style="font-size:28px;margin-bottom:12px;opacity:.3">📥</div><div style="font-size:14px;font-weight:600;margin-bottom:6px">${searchQ?'No results for "'+searchQ+'"':allLogTxs.length&&ui.filterMonth!=='All'?'No transactions this month':'No transactions imported yet'}</div><div style="font-size:12px;color:var(--text-muted)">${searchQ?'Try a different search':'Import a statement to populate this log'}</div></div>`;
+    const logTotal = filtered.filter(t=>t.type==='expense').reduce((s,t)=>s+effectiveAmt(t),0);
+    const selectAllCb = `<input type="checkbox" ${allSel?'checked':''} onclick="toggleSelectAll(${JSON.stringify(visIds)})" style="width:14px;height:14px;cursor:pointer;accent-color:var(--text)">`;
+    tabContent = `${banner}<div class="card"><div style="padding:11px 20px;border-bottom:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:10px">${selectAllCb}<span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">All Imported Transactions</span></div><span style="font-size:12px;color:var(--text-muted)">${allLogTxs.length} total</span></div>${searchBar}${catFilter}${bulkBar}<div class="stmt-scroll" style="max-height:500px;overflow-y:auto">${rows}</div>${filtered.length?`<div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ${filtered.length}</span><span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red)">−${fmtCAD(logTotal)}</span></div>`:''}</div>`;
+
+  } else if (ui.subTab === 'transactions') {
+    const filtered = ui.filterCat==='All' ? allTxs : allTxs.filter(t=>t.category===ui.filterCat);
+    const byCat = {}; allTxs.forEach(t=>{ const c=t.category||'Other'; if(!byCat[c]){byCat[c]=0;} byCat[c]++; });
+    const catsSorted = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+    const catFilter = `<div style="padding:12px 20px;border-bottom:1px solid var(--border-light);display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="font-size:12px;font-weight:500;color:var(--text-muted);margin-right:4px">Category:</span><button onclick="setFilterCat('All')" style="padding:5px 12px;border-radius:99px;border:1px solid ${ui.filterCat==='All'?'var(--text)':'var(--border)'};background:${ui.filterCat==='All'?'var(--text)':'transparent'};color:${ui.filterCat==='All'?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit">All</button>${catsSorted.map(([c])=>{ const ci=CATS[c]||CATS['Other']; const on=ui.filterCat===c; return `<button onclick="setFilterCat('${c}')" style="padding:5px 12px;border-radius:99px;border:1px solid ${on?'var(--text)':'var(--border)'};background:${on?'var(--text)':'transparent'};color:${on?'#fff':'var(--text-secondary)'};font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">${ci.icon} ${c}</button>`; }).join('')}</div>`;
+    const rows = filtered.map((t,i)=>{
+      const txIdx = allTxs.indexOf(t);
+      const picker = catPickerHtml('stmt:'+txIdx, t.category, cat=>`editStmtTxCat('${stmt.id}',${txIdx},'${cat}')`);
+      return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px 20px;border-bottom:1px solid var(--border-light);gap:12px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;margin-bottom:5px;word-break:break-word;text-transform:uppercase;letter-spacing:.01em">${t.description}</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--text-muted);font-size:11px;font-family:'DM Mono',monospace">${t.date}</span>${picker}</div></div><div style="flex-shrink:0;padding-top:2px;font-family:'DM Mono',monospace;font-weight:700;color:var(--red);font-size:14px;white-space:nowrap">−${fmtCAD(t.amount)}</div></div>`;
+    }).join('');
+    tabContent = `<div class="card">${catFilter}<div class="stmt-scroll" style="max-height:500px;overflow-y:auto">${rows||'<div style="padding:32px;text-align:center;color:var(--text-muted);font-size:13px">No transactions</div>'}</div><div style="padding:12px 20px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted)"><span>Showing ${filtered.length} of ${allTxs.length}</span><span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--red)">−${fmtCAD(filtered.reduce((s,t)=>s+t.amount,0))}</span></div></div>`;
+  }
+
+  const main = `<div style="flex:1;min-width:0">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div><div style="font-size:16px;font-weight:600">${stmt.name}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${new Date(stmt.uploadedAt).toLocaleDateString('en-CA',{month:'long',day:'numeric',year:'numeric'})} · ${stmt.transactions.length} transactions</div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${importBtn}${deleteSection}</div>
+    </div>
+    ${tabBar}${monthBar}${tabContent}
   </div>`;
+
+  return `<div style="margin-bottom:28px"><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Statement Analyzer</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">Upload a CSV export · instant categorization, no API key needed</div></div><div style="display:flex;gap:24px;align-items:flex-start">${sidebar}${main}</div>`;
 }
-window.addEventListener('DOMContentLoaded',function(){if(S.statements.length){S.stmtUiState.stage='results';S.stmtUiState.activeStmtId=S.statements[0].id;}_renderStmtTab();});
-</script></body></html>
+
+window.addEventListener('DOMContentLoaded', () => { render(); });
+</script>
+</body></html>
