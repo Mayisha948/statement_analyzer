@@ -434,7 +434,7 @@ async function stmtProcessFile(file) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20251001',
         max_tokens: 4000,
         system: STMT_AI_PROMPT,
         messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: 'Extract all transactions from this credit card statement. Return only the JSON array.' }] }]
