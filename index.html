@@ -287,8 +287,43 @@
 
   /* ── Currency number shimmer on update ── */
   .num-cell { transition: color 0.2s; }
-#tab-content{margin-top:32px}.sa-wrap{max-width:1100px;margin:0 auto;padding:0 32px 60px}.sa-nav{background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:0;z-index:100}.sa-nav-inner{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;height:56px;gap:10px}</style></head><body><div class="sa-nav"><div class="sa-nav-inner"><span style="font-size:15px;font-weight:600;letter-spacing:-.02em">finflow</span><span style="font-size:11px;color:var(--text-muted);font-family:DM Mono,monospace">· statement analyzer</span></div></div><div class="sa-wrap"><div id="tab-content"></div></div><script>
+#tab-content{margin-top:32px}.sa-wrap{max-width:1100px;margin:0 auto;padding:0 32px 60px}.sa-nav{background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:0;z-index:100}.sa-nav-inner{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;height:56px;gap:10px}</style></head><body><div class="sa-nav"><div class="sa-nav-inner"><span style="font-size:15px;font-weight:600;letter-spacing:-.02em">finflow</span><span style="font-size:11px;color:var(--text-muted);font-family:DM Mono,monospace">· statement analyzer</span><button onclick="toggleSettings()" style="margin-left:auto;background:transparent;border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:var(--text-secondary);display:flex;align-items:center;gap:5px;transition:all .15s">⚙ API Key</button></div></div>
+
+<div id="settings-modal" class="modal-overlay" onclick="if(event.target===this)toggleSettings()">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">Anthropic API Key</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.6">Your key is saved locally in your browser and never sent anywhere except directly to Anthropic. Get yours at <a href="https://console.anthropic.com" target="_blank" style="color:var(--text)">console.anthropic.com</a>.</p>
+    <div class="form-group">
+      <label class="form-label">API Key</label>
+      <input id="api-key-input" type="password" class="input input-mono" placeholder="sk-ant-..." style="font-size:13px">
+    </div>
+    <div class="modal-actions">
+      <button onclick="toggleSettings()" class="btn btn-ghost">Cancel</button>
+      <button onclick="saveApiKey()" class="btn btn-dark">Save Key</button>
+    </div>
+  </div>
+</div><div class="sa-wrap"><div id="tab-content"></div></div><script>
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
+
+// ─── API Key Settings ─────────────────────────────────────────────────────────
+function toggleSettings() {
+  const modal = document.getElementById('settings-modal');
+  if (!modal) return;
+  const isOpen = modal.classList.contains('open');
+  if (!isOpen) {
+    const inp = document.getElementById('api-key-input');
+    if (inp) { inp.value = localStorage.getItem('ff_api_key') || ''; setTimeout(()=>inp.focus(), 50); }
+  }
+  modal.classList.toggle('open', !isOpen);
+}
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (val) { localStorage.setItem('ff_api_key', val); }
+  else { localStorage.removeItem('ff_api_key'); }
+  document.getElementById('settings-modal').classList.remove('open');
+  S.stmtUiState.error = '';
+  _renderStmtTab();
+}
 const fmt=n=>Math.abs(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtCAD=n=>(n<0?'−':'')+'$'+fmt(Math.abs(n));
 const S={statements:JSON.parse(localStorage.getItem('sa_statements')||'[]'),transactions:JSON.parse(localStorage.getItem('sa_transactions')||'[]'),stmtUiState:{stage:'upload',processing:false,error:'',filterCat:'All',filterLogCat:'All',filterLogCats:[],activeStmtId:null,stmtSubTab:'breakdown',selectedTxIds:[],logSearch:'',filterMonth:'All',splittingTx:null,editingTx:null,bulkCatOpen:false,pendingDelete:null,forceUpload:false,importedCount:0,importWarning:null,addingCat:false,bulkTotal:0,bulkDone:0,bulkErrors:[],bulkCurrentName:""}};
@@ -387,9 +422,17 @@ async function stmtProcessFile(file) {
       ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: base64 } }
       : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } };
 
+    const apiKey = localStorage.getItem('ff_api_key') || '';
+    if (!apiKey) {
+      ui.error = 'No API key set. Click the ⚙ Settings button to add your Anthropic API key.';
+      ui.stage = 'upload';
+      ui.processing = false;
+      _renderStmtTab();
+      return;
+    }
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4000,
